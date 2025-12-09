@@ -34,6 +34,7 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 (async () => {
   try {
     console.log('Registering commands...');
+    /*
 
     // --- Optional: Guild-specific registration (instant, for testing) ---
     if (process.env.GUILD_ID) {
@@ -43,7 +44,7 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
       );
       console.log('✅ Commands registered in guild (test server)');
     }
-
+*/
     // --- Global registration (all servers, may take up to 1 hour) ---
     await rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
