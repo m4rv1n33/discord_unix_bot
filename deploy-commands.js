@@ -22,11 +22,11 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('set-timezone')
-    .setDescription('Set your timezone (e.g., Europe/Zurich or GMT+2)')
+    .setDescription('Set your timezone (e.g., Europe/Zurich or GMT+1)')
     .addStringOption(option =>
       option
         .setName('timezone')
-        .setDescription('Your timezone (example: Europe/Zurich or GMT+2)')
+        .setDescription('Your timezone (example: Europe/Zurich or GMT+1)')
         .setRequired(true))
 ].map(cmd => cmd.toJSON());
 
