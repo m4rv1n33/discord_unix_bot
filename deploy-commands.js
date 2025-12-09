@@ -33,19 +33,19 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
   try {
-    console.log('Registering commands...');
-    /*
-
-    // --- Optional: Guild-specific registration (instant, for testing) ---
+    console.log('Clearing old guild commands...');
+    
     if (process.env.GUILD_ID) {
+      // This clears all commands in the guild first
       await rest.put(
         Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-        { body: commands }
+        { body: [] }
       );
-      console.log('✅ Commands registered in guild (test server)');
+      console.log('✅ Old guild commands cleared');
     }
-*/
-    // --- Global registration (all servers, may take up to 1 hour) ---
+
+    console.log('Registering commands globally...');
+    // Register new global commands
     await rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
       { body: commands }
