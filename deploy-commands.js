@@ -2,16 +2,32 @@ require('dotenv').config();
 const { REST, Routes, SlashCommandBuilder } = require('discord.js');
 
 const commands = [
-  new SlashCommandBuilder().setName('unix-timestamp').setDescription('Get the current Unix timestamp'),
+  new SlashCommandBuilder()
+    .setName('unix-timestamp')
+    .setDescription('Get the current Unix timestamp'),
+
   new SlashCommandBuilder()
     .setName('unix-time')
-    .setDescription('Convert a time/date to Unix timestamp')
-    .addStringOption(option => option.setName('time').setDescription('Time in HH:mm').setRequired(true))
-    .addStringOption(option => option.setName('date').setDescription('Optional date in YYYY-MM-DD').setRequired(false)),
+    .setDescription('Convert a time/date to a Unix timestamp (example: 25-12-2025 14:30)')
+    .addStringOption(option =>
+      option
+        .setName('time')
+        .setDescription('Time in 24-hour format: HH:mm (example: 14:30)')
+        .setRequired(true))
+    .addStringOption(option =>
+      option
+        .setName('date')
+        .setDescription('Optional date in dd-mm-yyyy format (example: 25-12-2025)')
+        .setRequired(false)),
+
   new SlashCommandBuilder()
     .setName('set-timezone')
-    .setDescription('Set your timezone in GMT')
-    .addStringOption(option => option.setName('timezone').setDescription('Your GMT offset (e.g., +2)').setRequired(true))
+    .setDescription('Set your timezone (e.g., Europe/Zurich or GMT+2)')
+    .addStringOption(option =>
+      option
+        .setName('timezone')
+        .setDescription('Your timezone (example: Europe/Zurich or GMT+2)')
+        .setRequired(true))
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
