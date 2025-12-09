@@ -1,4 +1,4 @@
-require("dotenv").config();
+
 const fs = require("fs");
 const path = require("path");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
@@ -164,7 +164,7 @@ function buildTimestampEmbed(ts, userId) {
           { name: 'Relative Time', value: `${render(ts, 'R')} • \`<t:${ts}:R>\``, inline: false }
       )
       .setFooter({ 
-          text: `Made for CLRPC by @m4rv1n_33`,
+          text: `Made by @m4rv1n_33`,
           iconURL: 'https://cdn.discordapp.com/attachments/1447708077498437846/1448039340407132271/image.jpg?ex=6939cf3a&is=69387dba&hm=8fc03d009bbce5ec92f70690dadf7360c7d3db476baab0653f024b00fd261b70&' 
       });
 }
