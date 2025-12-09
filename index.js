@@ -31,13 +31,18 @@ client.on('interactionCreate', async interaction => {
 });
 
 function formatTimestamps(ts) {
-  return `<t:${ts}:t> – Short Time
-<t:${ts}:T> – Long Time
-<t:${ts}:d> – Short Date
-<t:${ts}:D> – Long Date
-<t:${ts}:f> – Short Date & Time
-<t:${ts}:F> – Full Date & Time
-<t:${ts}:R> – Relative Time`;
+  return `${render(ts, 't')} - \`<t:${ts}:t>\` - Short Time
+${render(ts, 'T')} - \`<t:${ts}:T>\` - Long Time
+${render(ts, 'd')} - \`<t:${ts}:d>\` - Short Date
+${render(ts, 'D')} - \`<t:${ts}:D>\` - Long Date
+${render(ts, 'f')} - \`<t:${ts}:f>\` - Short Date & Time
+${render(ts, 'F')} - \`<t:${ts}:F>\` - Full Date & Time
+${render(ts, 'R')} - \`<t:${ts}:R>\` - Relative Time`;
 }
+
+function render(ts, style) {
+  return `<t:${ts}:${style}>`;
+}
+
 
 client.login(process.env.DISCORD_TOKEN);
