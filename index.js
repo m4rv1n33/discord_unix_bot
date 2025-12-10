@@ -142,14 +142,15 @@ function buildTimestampEmbed(ts, userId) {
     .setTitle("⏰ Unix Time Converter")
     .setDescription(`**Timezone:** \`${tz}\`\n**Local time:** ${formatted}`)
     .addFields(
-      { name: "Short Time", value: `<t:${ts}:t>`, inline: true },
-      { name: "Long Time", value: `<t:${ts}:T>`, inline: true },
-      { name: "Short Date", value: `<t:${ts}:d>`, inline: true },
-      { name: "Long Date", value: `<t:${ts}:D>`, inline: true },
-      { name: "Short Date & Time", value: `<t:${ts}:f>`, inline: true },
-      { name: "Full Date & Time", value: `<t:${ts}:F>`, inline: true },
-      { name: "Relative Time", value: `<t:${ts}:R>`, inline: true },
-      { name: "Unix Timestamp", value: `\`${ts}\``, inline: false }
+      { name: "📅 Raw Unix Timestamp", value: `\`\`\`\n${ts}\n\`\`\``, inline: false },
+      { name: "⏱️ Discord Timestamp Formats", value: "Copy these formats for Discord:", inline: false },
+      { name: "Short Time", value: `\`<t:${ts}:t>\`\n<t:${ts}:t>`, inline: true },
+      { name: "Long Time", value: `\`<t:${ts}:T>\`\n<t:${ts}:T>`, inline: true },
+      { name: "Short Date", value: `\`<t:${ts}:d>\`\n<t:${ts}:d>`, inline: true },
+      { name: "Long Date", value: `\`<t:${ts}:D>\`\n<t:${ts}:D>`, inline: true },
+      { name: "Short Date & Time", value: `\`<t:${ts}:f>\`\n<t:${ts}:f>`, inline: true },
+      { name: "Full Date & Time", value: `\`<t:${ts}:F>\`\n<t:${ts}:F>`, inline: true },
+      { name: "Relative Time", value: `\`<t:${ts}:R>\`\n<t:${ts}:R>`, inline: true }
     )
     .setFooter({
       text: `Made by @m4rv1n_33`,
