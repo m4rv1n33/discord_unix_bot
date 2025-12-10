@@ -5,39 +5,46 @@ const moment = require('moment-timezone');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-// timezone save file
-// Use Railway's persistent volume
-const tzFile = process.env.RAILWAY_VOLUME_MOUNT_PATH 
-  ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, "timezones.json")
-  : path.join(__dirname, "data", "timezones.json");
+// Determine storage path - Railway volume or local
+const storagePath = process.env.RAILWAY_VOLUME_MOUNT_PATH || "/data";
+const tzFile = path.join(storagePath, "timezones.json");
 
-// Create data directory if it doesn't exist
-const dataDir = path.dirname(tzFile);
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+console.log(`Using storage path: ${storagePath}`);
+console.log(`Timezone file: ${tzFile}`);
+
+// Create storage directory if it doesn't exist
+if (!fs.existsSync(storagePath)) {
+  console.log(`Creating storage directory: ${storagePath}`);
+  fs.mkdirSync(storagePath, { recursive: true });
 }
 
 // load saved timezones (if any)
 let timezones = {};
 if (fs.existsSync(tzFile)) {
   try {
-    timezones = JSON.parse(fs.readFileSync(tzFile, "utf8"));
+    const data = fs.readFileSync(tzFile, "utf8");
+    timezones = JSON.parse(data);
+    console.log(`Loaded ${Object.keys(timezones).length} timezone(s) from storage`);
   } catch (error) {
-    console.error("Error loading timezones:", error);
+    console.error("Error loading timezones:", error.message);
   }
+} else {
+  console.log("No existing timezone file found, starting fresh");
 }
 
 // save tz to file
 function saveTimezones() {
   try {
-    fs.writeFileSync(tzFile, JSON.stringify(timezones, null, 4));
+    fs.writeFileSync(tzFile, JSON.stringify(timezones, null, 2));
+    console.log(`Saved ${Object.keys(timezones).length} timezone(s) to storage`);
   } catch (error) {
-    console.error("Error saving timezones:", error);
+    console.error("Error saving timezones:", error.message);
   }
 }
 
 client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
+  console.log(`Bot is ready! Serving ${client.guilds.cache.size} guild(s)`);
 });
 
 client.on("interactionCreate", async (interaction) => {
@@ -45,6 +52,8 @@ client.on("interactionCreate", async (interaction) => {
 
   const command = interaction.commandName;
   const userId = interaction.user.id;
+
+  console.log(`Received command: ${command} from user: ${userId}`);
 
   if (command === "unix-timestamp") {
     const ts = Math.floor(Date.now() / 1000);
@@ -55,6 +64,8 @@ client.on("interactionCreate", async (interaction) => {
     const timeInput = interaction.options.getString("time");
     const dateInput = interaction.options.getString("date");
     const userTz = timezones[userId] || "UTC";
+
+    console.log(`Processing time: ${timeInput}, date: ${dateInput || 'today'}, tz: ${userTz}`);
 
     // Validate time format (HH:mm)
     const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -97,6 +108,7 @@ client.on("interactionCreate", async (interaction) => {
       
       // Convert to Unix timestamp
       const ts = m.unix();
+      console.log(`Converted to timestamp: ${ts}`);
 
       return interaction.reply({ embeds: [buildTimestampEmbed(ts, userId)] });
     } catch (error) {
@@ -110,6 +122,8 @@ client.on("interactionCreate", async (interaction) => {
 
   if (command === "set-timezone") {
     const tz = interaction.options.getString("timezone");
+
+    console.log(`Setting timezone for ${userId} to ${tz}`);
 
     try {
       // Validate timezone using moment-timezone
@@ -158,7 +172,7 @@ function buildTimestampEmbed(ts, userId) {
   const relativeTime = m.from(now);
 
   return new EmbedBuilder()
-    .setColor("#6366f1") // Modern indigo color
+    .setColor("#6366f1")
     .setTitle("Timestamp Converter")
     .setDescription(`**Local time in \`${tz}\`**\n${formatted}`)
     .addFields(
@@ -209,14 +223,28 @@ function buildTimestampEmbed(ts, userId) {
       }
     )
     .setFooter({
-      text: `Made by @m4rv1n_33 • ID: ${ts}`,
+      text: `Unix Timestamp Converter • ID: ${ts}`,
       iconURL: "https://cdn.discordapp.com/attachments/1447708077498437846/1448039340407132271/image.jpg",
     })
     .setTimestamp();
 }
 
 // Handle errors
-client.on("error", console.error);
-process.on("unhandledRejection", console.error);
+client.on("error", (error) => {
+  console.error("Discord.js client error:", error);
+});
 
-client.login(process.env.DISCORD_TOKEN);
+process.on("unhandledRejection", (error) => {
+  console.error("Unhandled promise rejection:", error);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught exception:", error);
+});
+
+// Start the bot
+console.log("Starting Discord bot...");
+client.login(process.env.DISCORD_TOKEN).catch(error => {
+  console.error("Failed to login:", error);
+  process.exit(1);
+});
