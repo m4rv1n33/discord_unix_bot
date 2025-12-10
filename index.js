@@ -18,7 +18,7 @@ function saveTimezones() {
   fs.writeFileSync(tzFile, JSON.stringify(timezones, null, 4));
 }
 
-client.once("ready", () => {
+client.once("clientReady", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
@@ -70,38 +70,28 @@ client.on("interactionCreate", async (interaction) => {
 
     const [hh, mm] = timeInput.split(":").map(Number);
 
-    // Build timestamp in user's timezone correctly
-    const localDateStr = `${year}-${month}-${day}T${timeInput}:00`;
-
-    const utcMillis = Date.parse(
-      new Intl.DateTimeFormat("en-US", {
-        timeZone: userTz,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hourCycle: "h23",
-      }).format(new Date(localDateStr))
+    // Convert input date/time in user's timezone to UTC timestamp
+    const dateStr = `${year}-${month}-${day}T${timeInput}:00`;
+    const ts = Math.floor(
+      new Date(
+        new Intl.DateTimeFormat("en-US", {
+          timeZone: userTz,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hourCycle: "h23",
+        }).format(new Date(dateStr))
+      ).getTime() / 1000
     );
-
-    const ts = Math.floor(utcMillis / 1000);
 
     return interaction.reply({ embeds: [buildTimestampEmbed(ts, userId)] });
   }
 
   if (command === "set-timezone") {
     const tz = interaction.options.getString("timezone");
-
-    const gmtOffsetPattern = /^GMT([+-]\d{1,2})$/i;
-    if (gmtOffsetPattern.test(tz)) {
-      timezones[userId] = tz.toUpperCase();
-      saveTimezones();
-      return interaction.reply(
-        `Timezone set to **${tz.toUpperCase()}** and saved 📝`
-      );
-    }
 
     try {
       Intl.DateTimeFormat("en-GB", { timeZone: tz });
@@ -110,7 +100,7 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.reply(`Timezone set to **${tz}** and saved 📝`);
     } catch {
       return interaction.reply(
-        "❌ Invalid timezone. Use IANA timezone like `Europe/Zurich` or GMT offsets like `GMT+2`."
+        "❌ Invalid timezone. Use an IANA timezone like `Europe/Zurich`."
       );
     }
   }
@@ -119,10 +109,7 @@ client.on("interactionCreate", async (interaction) => {
 function buildTimestampEmbed(ts, userId) {
   const tz = timezones[userId] || "UTC";
 
-  let localDate;
-
-  // Treat GMT offsets same as IANA timezone
-  localDate = new Intl.DateTimeFormat("en-GB", {
+  const localDate = new Intl.DateTimeFormat("en-GB", {
     dateStyle: "full",
     timeStyle: "long",
     timeZone: tz,
@@ -133,46 +120,18 @@ function buildTimestampEmbed(ts, userId) {
     .setTitle("Unix Time Converter")
     .setDescription(`Timezone selected: \`${tz}\`\nLocal time: **${localDate}**`)
     .addFields(
-      {
-        name: "Short Time",
-        value: `${render(ts, "t")} • \`<t:${ts}:t>\``,
-        inline: false,
-      },
-      {
-        name: "Long Time",
-        value: `${render(ts, "T")} • \`<t:${ts}:T>\``,
-        inline: false,
-      },
-      {
-        name: "Short Date",
-        value: `${render(ts, "d")} • \`<t:${ts}:d>\``,
-        inline: false,
-      },
-      {
-        name: "Long Date",
-        value: `${render(ts, "D")} • \`<t:${ts}:D>\``,
-        inline: false,
-      },
-      {
-        name: "Short Date & Time",
-        value: `${render(ts, "f")} • \`<t:${ts}:f>\``,
-        inline: false,
-      },
-      {
-        name: "Full Date & Time",
-        value: `${render(ts, "F")} • \`<t:${ts}:F>\``,
-        inline: false,
-      },
-      {
-        name: "Relative Time",
-        value: `${render(ts, "R")} • \`<t:${ts}:R>\``,
-        inline: false,
-      }
+      { name: "Short Time", value: `${render(ts, "t")} • \`<t:${ts}:t>\``, inline: false },
+      { name: "Long Time", value: `${render(ts, "T")} • \`<t:${ts}:T>\``, inline: false },
+      { name: "Short Date", value: `${render(ts, "d")} • \`<t:${ts}:d>\``, inline: false },
+      { name: "Long Date", value: `${render(ts, "D")} • \`<t:${ts}:D>\``, inline: false },
+      { name: "Short Date & Time", value: `${render(ts, "f")} • \`<t:${ts}:f>\``, inline: false },
+      { name: "Full Date & Time", value: `${render(ts, "F")} • \`<t:${ts}:F>\``, inline: false },
+      { name: "Relative Time", value: `${render(ts, "R")} • \`<t:${ts}:R>\``, inline: false }
     )
     .setFooter({
       text: `Made by @m4rv1n_33`,
       iconURL:
-        "https://cdn.discordapp.com/attachments/1447708077498437846/1448039340407132271/image.jpg?ex=6939cf3a&is=69387dba&hm=8fc03d009bbce5ec92f70690dadf7360c7d3db476baab0653f024b00fd261b70&",
+        "https://cdn.discordapp.com/attachments/1447708077498437846/1448039340407132271/image.jpg",
     });
 }
 
