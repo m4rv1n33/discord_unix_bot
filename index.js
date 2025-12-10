@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+const { Temporal } = require("@js-temporal/polyfill");
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -26,23 +27,18 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   const command = interaction.commandName;
-  const userId = interaction.user.id; // the user id for per-user tz
-
-  // /unix-timestamp
+  const userId = interaction.user.id;
 
   if (command === "unix-timestamp") {
     const ts = Math.floor(Date.now() / 1000);
     return interaction.reply({ embeds: [buildTimestampEmbed(ts, userId)] });
   }
 
-  // /unix-time
-
   if (command === "unix-time") {
     const userId = interaction.user.id;
-    const timeInput = interaction.options.getString("time"); // required
-    const dateInput = interaction.options.getString("date"); // optional
+    const timeInput = interaction.options.getString("time");
+    const dateInput = interaction.options.getString("date");
 
-    // Validate time (HH:mm)
     const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
     if (!timePattern.test(timeInput)) {
       return interaction.reply(
@@ -50,14 +46,11 @@ client.on("interactionCreate", async (interaction) => {
       );
     }
 
-    // Determine user's timezone
     const userTz = timezones[userId] || "UTC";
 
-    // Determine the date to use
     let day, month, year;
 
     if (dateInput) {
-      // validate dd-mm-yyyy
       const datePattern = /^(\d{2})-(\d{2})-(\d{4})$/;
       const dateMatch = dateInput.match(datePattern);
       if (!dateMatch) {
@@ -67,7 +60,6 @@ client.on("interactionCreate", async (interaction) => {
       }
       [, day, month, year] = dateMatch;
     } else {
-      // default to today in user's timezone
       const now = new Date();
       if (userTz.startsWith("GMT")) {
         const offset = parseInt(userTz.replace("GMT", ""), 10);
@@ -86,53 +78,33 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
 
-// Build the Date object IN THE USER TIMEZONE
-let dateTime;
+    let dateTime;
 
-if (userTz.startsWith("GMT")) {
-    // Handle GMT offsets manually
-    const offset = parseInt(userTz.replace("GMT", ""), 10);
-    const [hh, mm] = timeInput.split(":").map(Number);
-
-    // Create a UTC timestamp matching the user's local clock time
-    dateTime = new Date(Date.UTC(year, month - 1, day, hh - offset, mm));
-} else {
-    // Handle real IANA zones properly
-    const [hh, mm] = timeInput.split(":").map(Number);
-
-    // Create a date as if the user typed these numbers in their timezone
-    const asUTC = new Date(Date.UTC(year, month - 1, day, hh, mm));
-
-    // Convert it to actual UTC based on user's timezone rules
-    const parts = new Intl.DateTimeFormat("en-US", {
+    if (userTz.startsWith("GMT")) {
+      const offset = parseInt(userTz.replace("GMT", ""), 10);
+      const [hh, mm] = timeInput.split(":").map(Number);
+      dateTime = new Date(Date.UTC(year, month - 1, day, hh - offset, mm));
+    } else {
+      const [hh, mm] = timeInput.split(":").map(Number);
+      const zoned = Temporal.ZonedDateTime.from({
         timeZone: userTz,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        hourCycle: "h23"
-    }).formatToParts(asUTC);
-
-    const map = Object.fromEntries(parts.map(p => [p.type, p.value]));
-
-    dateTime = new Date(
-        `${map.year}-${map.month}-${map.day}T${map.hour}:${map.minute}:00Z`
-    );
-}
-
+        year: Number(year),
+        month: Number(month),
+        day: Number(day),
+        hour: hh,
+        minute: mm,
+      });
+      dateTime = new Date(zoned.epochMilliseconds);
+    }
 
     const ts = Math.floor(dateTime.getTime() / 1000);
 
-    // Reply with the timestamp embed
     return interaction.reply({ embeds: [buildTimestampEmbed(ts, userId)] });
   }
 
-  // /set-timezone (actually works now lol)
   if (command === "set-timezone") {
     const tz = interaction.options.getString("timezone");
 
-    // check if user entered GMT+/-offset
     const gmtOffsetPattern = /^GMT([+-]\d{1,2})$/i;
     if (gmtOffsetPattern.test(tz)) {
       timezones[userId] = tz.toUpperCase();
@@ -142,7 +114,6 @@ if (userTz.startsWith("GMT")) {
       );
     }
 
-    // otherwise validate IANA timezone
     try {
       Intl.DateTimeFormat("en-GB", { timeZone: tz });
       timezones[userId] = tz;
@@ -156,14 +127,12 @@ if (userTz.startsWith("GMT")) {
   }
 });
 
-// gmt offset support
 function formatWithOffset(ts, offsetHours) {
   const date = new Date(ts * 1000);
   date.setTime(date.getTime() + offsetHours * 60 * 60 * 1000);
   return date.toLocaleString("en-GB", { dateStyle: "full", timeStyle: "long" });
 }
 
-// embed builder
 function buildTimestampEmbed(ts, userId) {
   const tz = timezones[userId] || "UTC";
 
@@ -202,5 +171,4 @@ function render(ts, style) {
   return `<t:${ts}:${style}>`;
 }
 
-// bot token login
 client.login(process.env.DISCORD_TOKEN);
