@@ -18,7 +18,7 @@ function saveTimezones() {
   fs.writeFileSync(tzFile, JSON.stringify(timezones, null, 4));
 }
 
-client.once("ready", () => {
+client.once("clientReady", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
@@ -86,20 +86,35 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
 
-    // Build the Date object
-    const [hh, mm] = timeInput.split(":").map(Number);
+    // Build the Date object **IN THE USER'S TIMEZONE**
+    let dateTime;
 
-    const zoned = new Date(
-      new Date(`${year}-${month}-${day}T${hh}:${mm}:00`).toLocaleString("en-US", {
+    if (userTz.startsWith("GMT")) {
+      const offset = parseInt(userTz.replace("GMT", ""), 10);
+      const [hh, mm] = timeInput.split(":").map(Number);
+      dateTime = new Date(Date.UTC(year, month - 1, day, hh - offset, mm));
+    } else {
+      const [hh, mm] = timeInput.split(":").map(Number);
+
+      const dtf = new Intl.DateTimeFormat("en-US", {
         timeZone: userTz,
-      })
-    );
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23"
+      });
 
-    const ts = Math.floor(zoned.getTime() / 1000);
+      const parts = dtf.formatToParts(new Date(Date.UTC(year, month - 1, day, hh, mm)));
+      const obj = Object.fromEntries(parts.map(p => [p.type, p.value]));
 
-    if (isNaN(zoned)) {
-      return interaction.reply("❌ Invalid date and time combination.");
+      dateTime = new Date(
+        `${obj.year}-${obj.month}-${obj.day}T${obj.hour}:${obj.minute}:00Z`
+      );
     }
+
+    const ts = Math.floor(dateTime.getTime() / 1000);
 
     // Reply with the timestamp embed
     return interaction.reply({ embeds: [buildTimestampEmbed(ts, userId)] });
@@ -174,7 +189,6 @@ function buildTimestampEmbed(ts, userId) {
           iconURL: 'https://cdn.discordapp.com/attachments/1447708077498437846/1448039340407132271/image.jpg?ex=6939cf3a&is=69387dba&hm=8fc03d009bbce5ec92f70690dadf7360c7d3db476baab0653f024b00fd261b70&' 
       });
 }
-
 
 function render(ts, style) {
   return `<t:${ts}:${style}>`;
