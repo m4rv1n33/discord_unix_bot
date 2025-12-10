@@ -1,4 +1,14 @@
-const { REST, Routes, SlashCommandBuilder, ContextMenuCommandBuilder, ApplicationCommandType, PermissionsBitField } = require('discord.js');
+const {
+    REST,
+    Routes,
+    SlashCommandBuilder,
+    ContextMenuCommandBuilder,
+    ApplicationCommandType,
+    PermissionsBitField,
+    ApplicationIntegrationType, 
+    InteractionContextType 
+} = require('discord.js');
+
 
 // Define regular slash commands
 const slashCommands = [
