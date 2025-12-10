@@ -86,17 +86,25 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
 
-    // Build the Date object **IN THE USER'S TIMEZONE**
-    let dateTime;
+// Build the Date object IN THE USER TIMEZONE
+let dateTime;
 
-    if (userTz.startsWith("GMT")) {
-      const offset = parseInt(userTz.replace("GMT", ""), 10);
-      const [hh, mm] = timeInput.split(":").map(Number);
-      dateTime = new Date(Date.UTC(year, month - 1, day, hh - offset, mm));
-    } else {
-      const [hh, mm] = timeInput.split(":").map(Number);
+if (userTz.startsWith("GMT")) {
+    // Handle GMT offsets manually
+    const offset = parseInt(userTz.replace("GMT", ""), 10);
+    const [hh, mm] = timeInput.split(":").map(Number);
 
-      const dtf = new Intl.DateTimeFormat("en-US", {
+    // Create a UTC timestamp matching the user's local clock time
+    dateTime = new Date(Date.UTC(year, month - 1, day, hh - offset, mm));
+} else {
+    // Handle real IANA zones properly
+    const [hh, mm] = timeInput.split(":").map(Number);
+
+    // Create a date as if the user typed these numbers in their timezone
+    const asUTC = new Date(Date.UTC(year, month - 1, day, hh, mm));
+
+    // Convert it to actual UTC based on user's timezone rules
+    const parts = new Intl.DateTimeFormat("en-US", {
         timeZone: userTz,
         year: "numeric",
         month: "2-digit",
@@ -104,15 +112,15 @@ client.on("interactionCreate", async (interaction) => {
         hour: "2-digit",
         minute: "2-digit",
         hourCycle: "h23"
-      });
+    }).formatToParts(asUTC);
 
-      const parts = dtf.formatToParts(new Date(Date.UTC(year, month - 1, day, hh, mm)));
-      const obj = Object.fromEntries(parts.map(p => [p.type, p.value]));
+    const map = Object.fromEntries(parts.map(p => [p.type, p.value]));
 
-      dateTime = new Date(
-        `${obj.year}-${obj.month}-${obj.day}T${obj.hour}:${obj.minute}:00Z`
-      );
-    }
+    dateTime = new Date(
+        `${map.year}-${map.month}-${map.day}T${map.hour}:${map.minute}:00Z`
+    );
+}
+
 
     const ts = Math.floor(dateTime.getTime() / 1000);
 
