@@ -70,29 +70,23 @@ client.on("interactionCreate", async (interaction) => {
 
     const [hh, mm] = timeInput.split(":").map(Number);
 
-    let dateTime;
-    if (userTz.startsWith("GMT")) {
-      const offset = parseInt(userTz.replace("GMT", ""), 10);
-      dateTime = new Date(Date.UTC(year, month - 1, day, hh - offset, mm));
-    } else {
-      // Correct UTC conversion from user timezone
-      const localDate = new Date(`${year}-${month}-${day}T${timeInput}:00`);
-      const utcMillis = Date.parse(
-        new Intl.DateTimeFormat("en-US", {
-          timeZone: userTz,
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          hourCycle: "h23",
-        }).format(localDate)
-      );
-      dateTime = new Date(utcMillis);
-    }
+    // Build timestamp in user's timezone correctly
+    const localDateStr = `${year}-${month}-${day}T${timeInput}:00`;
 
-    const ts = Math.floor(dateTime.getTime() / 1000);
+    const utcMillis = Date.parse(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: userTz,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      }).format(new Date(localDateStr))
+    );
+
+    const ts = Math.floor(utcMillis / 1000);
 
     return interaction.reply({ embeds: [buildTimestampEmbed(ts, userId)] });
   }
@@ -122,26 +116,17 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-function formatWithOffset(ts, offsetHours) {
-  const date = new Date(ts * 1000);
-  date.setTime(date.getTime() + offsetHours * 60 * 60 * 1000);
-  return date.toLocaleString("en-GB", { dateStyle: "full", timeStyle: "long" });
-}
-
 function buildTimestampEmbed(ts, userId) {
   const tz = timezones[userId] || "UTC";
 
   let localDate;
-  if (tz.startsWith("GMT")) {
-    const offset = parseInt(tz.replace("GMT", ""), 10);
-    localDate = formatWithOffset(ts, offset);
-  } else {
-    localDate = new Intl.DateTimeFormat("en-GB", {
-      dateStyle: "full",
-      timeStyle: "long",
-      timeZone: tz,
-    }).format(new Date(ts * 1000));
-  }
+
+  // Treat GMT offsets same as IANA timezone
+  localDate = new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "full",
+    timeStyle: "long",
+    timeZone: tz,
+  }).format(new Date(ts * 1000));
 
   return new EmbedBuilder()
     .setColor("#f200ff")
