@@ -19,7 +19,7 @@ const VOLUME_PATH = "/data"; // Railway volume mount point
 const TZ_FILE = path.join(VOLUME_PATH, "timezones.json");
 const BACKUP_FILE = path.join(__dirname, ".timezones_backup.json"); // Gitignored local backup
 
-console.log("🚀 Starting Discord Unix Timestamp Bot");
+console.log("Starting Discord Unix Timestamp Bot");
 console.log("=== Storage Configuration ===");
 
 // Initialize storage system
@@ -31,7 +31,7 @@ try {
   if (!fs.existsSync(VOLUME_PATH)) {
     console.log(`Creating directory: ${VOLUME_PATH}`);
     fs.mkdirSync(VOLUME_PATH, { recursive: true, mode: 0o755 });
-    console.log("✅ Directory created");
+    console.log("Directory created");
   }
   
   // Test write permissions
@@ -41,17 +41,17 @@ try {
   fs.unlinkSync(testFile);
   
   storageReady = true;
-  console.log("✅ Volume storage is ready and writable");
-  console.log(`📄 Primary storage: ${TZ_FILE}`);
+  console.log("Volume storage is ready and writable");
+  console.log(`Primary storage: ${TZ_FILE}`);
   
 } catch (error) {
-  console.error("❌ Volume storage failed:", error.message);
-  console.warn("⚠️  Falling back to local storage (data may be lost on redeploy)");
+  console.error("Volume storage failed:", error.message);
+  console.warn("Falling back to local storage (data may be lost on redeploy)");
   usingPersistentStorage = false;
 }
 
-console.log(`📋 Backup file: ${BACKUP_FILE}`);
-console.log(`💾 Persistent: ${usingPersistentStorage ? "YES" : "NO (data at risk)"}`);
+console.log(`Backup file: ${BACKUP_FILE}`);
+console.log(`Persistent: ${usingPersistentStorage ? "YES" : "NO (data at risk)"}`);
 console.log("=== End Configuration ===\n");
 
 // Load timezones with smart fallback
@@ -65,7 +65,7 @@ function loadTimezones() {
       const data = fs.readFileSync(TZ_FILE, "utf8");
       timezones = JSON.parse(data);
       loadedSource = "volume";
-      console.log(`📊 Loaded ${Object.keys(timezones).length} timezone(s) from volume storage`);
+      console.log(`Loaded ${Object.keys(timezones).length} timezone(s) from volume storage`);
       return;
     } catch (error) {
       console.error("Error loading from volume:", error.message);
@@ -78,13 +78,13 @@ function loadTimezones() {
       const data = fs.readFileSync(BACKUP_FILE, "utf8");
       timezones = JSON.parse(data);
       loadedSource = "backup";
-      console.log(`📊 Loaded ${Object.keys(timezones).length} timezone(s) from backup`);
+      console.log(`Loaded ${Object.keys(timezones).length} timezone(s) from backup`);
       
       // Restore to primary storage if possible
       if (storageReady) {
         try {
           fs.writeFileSync(TZ_FILE, JSON.stringify(timezones, null, 2));
-          console.log("✅ Restored backup to volume storage");
+          console.log("Restored backup to volume storage");
         } catch (error) {
           console.error("Could not restore to volume:", error.message);
         }
@@ -95,7 +95,7 @@ function loadTimezones() {
     }
   }
   
-  console.log("🆕 No timezone data found, starting fresh");
+  console.log("No timezone data found, starting fresh");
   loadedSource = "fresh";
 }
 
@@ -115,7 +115,7 @@ function saveTimezones() {
     // Always save backup
     fs.writeFileSync(BACKUP_FILE, JSON.stringify(timezones, null, 2));
     
-    console.log(`💾 Saved ${count} timezone(s) to:`);
+    console.log(`Saved ${count} timezone(s) to:`);
     if (storageReady) console.log(`   Volume: ${TZ_FILE}`);
     console.log(`   Backup: ${BACKUP_FILE}`);
     
@@ -166,10 +166,10 @@ function checkAdmin(interaction) {
 
 // Bot event handlers
 client.once("ready", () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
-  console.log(`📡 Serving ${client.guilds.cache.size} guild(s)`);
-  console.log(`👤 Admin users: ${process.env.ADMIN_IDS || 'None configured'}`);
-  console.log(`👑 Bot owner: ${process.env.OWNER_ID || 'Not set'}`);
+  console.log(`Logged in as ${client.user.tag}`);
+  console.log(`Serving ${client.guilds.cache.size} guild(s)`);
+  console.log(`Admin users: ${process.env.ADMIN_IDS || 'None configured'}`);
+  console.log(`Bot owner: ${process.env.OWNER_ID || 'Not set'}`);
 });
 
 client.on("interactionCreate", async (interaction) => {
@@ -455,7 +455,7 @@ function buildTimestampEmbed(ts, userId) {
       },
       { 
         name: "Relative Time", 
-        value: `\`<t:${ts}:R>\` • ${relativeTime}`, 
+        value: `\`<t:${ts}:R>\`\n<t:${ts}:R>`, 
         inline: true 
       },
       { 
@@ -510,8 +510,8 @@ process.on("uncaughtException", (error) => {
 });
 
 // Start bot
-console.log("🔗 Connecting to Discord...");
+console.log("Connecting to Discord...");
 client.login(process.env.DISCORD_TOKEN).catch(error => {
-  console.error("❌ Failed to login:", error);
+  console.error("Failed to login:", error);
   process.exit(1);
 });

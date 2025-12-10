@@ -88,17 +88,17 @@ function validateEnv() {
   const missing = required.filter(key => !process.env[key]);
   
   if (missing.length > 0) {
-    console.error(`❌ Missing environment variables: ${missing.join(', ')}`);
+    console.error(`Missing environment variables: ${missing.join(', ')}`);
     console.error('Please set these in your Railway environment variables');
     return false;
   }
   
-  console.log('✅ Environment variables validated');
+  console.log('Environment variables validated');
   return true;
 }
 
 async function deployCommands() {
-  console.log('🚀 Starting command deployment...');
+  console.log('Starting command deployment...');
   
   // Validate env
   if (!validateEnv()) {
@@ -111,21 +111,21 @@ async function deployCommands() {
   try {
     // Deploy to specific guild (for testing)
     if (process.env.GUILD_ID) {
-      console.log(`🔧 Deploying to guild: ${process.env.GUILD_ID}`);
+      console.log(`Deploying to guild: ${process.env.GUILD_ID}`);
       
       // Clear existing guild commands first
       await rest.put(
         Routes.applicationGuildCommands(clientId, process.env.GUILD_ID),
         { body: [] }
       );
-      console.log('✅ Cleared old guild commands');
+      console.log('Cleared old guild commands');
       
       // Register new guild commands
       const guildData = await rest.put(
         Routes.applicationGuildCommands(clientId, process.env.GUILD_ID),
         { body: allCommands }
       );
-      console.log(`✅ Registered ${guildData.length} commands to guild`);
+      console.log(`Registered ${guildData.length} commands to guild`);
     }
     
     // Deploy globally
@@ -135,8 +135,8 @@ async function deployCommands() {
       { body: allCommands }
     );
     
-    console.log(`✅ Registered ${globalData.length} commands globally`);
-    console.log('\n📋 Command List:');
+    console.log(`Registered ${globalData.length} commands globally`);
+    console.log('\nCommand List:');
     
     // Count by type and permissions
     const slashCmds = globalData.filter(c => c.type === 1);
@@ -154,9 +154,9 @@ async function deployCommands() {
       console.log(`   ${cmd.name} - Right-click user ${isAdmin ? '🔐' : ''}`);
     });
     
-    console.log('\n🎉 Deployment complete!');
-    console.log('🔐 Admin-only commands marked with 🔐');
-    console.log('⚠️  Global commands may take up to 1 hour to appear');
+    console.log('\nDeployment complete!');
+    console.log('Admin-only commands marked with 🔐');
+    console.log('Global commands may take up to 1 hour to appear');
     
   } catch (error) {
     console.error('💥 Deployment failed:', error.message);
