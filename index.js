@@ -59,39 +59,41 @@ client.on("interactionCreate", async (interaction) => {
       [, day, month, year] = dateMatch;
     } else {
       const now = new Date();
-      if (userTz.startsWith("GMT")) {
-        const offset = parseInt(userTz.replace("GMT", ""), 10);
-        const userDate = new Date(now.getTime() + offset * 60 * 60 * 1000);
-        day = String(userDate.getUTCDate()).padStart(2, "0");
-        month = String(userDate.getUTCMonth() + 1).padStart(2, "0");
-        year = String(userDate.getUTCFullYear());
-      } else {
-        const userDateStr = new Intl.DateTimeFormat("en-GB", {
-          timeZone: userTz,
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        }).format(now);
-        [day, month, year] = userDateStr.split("/");
-      }
+      const userDateStr = new Intl.DateTimeFormat("en-GB", {
+        timeZone: userTz,
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }).format(now);
+      [day, month, year] = userDateStr.split("/");
     }
-
-    let dateTime;
 
     const [hh, mm] = timeInput.split(":").map(Number);
 
+    let dateTime;
     if (userTz.startsWith("GMT")) {
       const offset = parseInt(userTz.replace("GMT", ""), 10);
       dateTime = new Date(Date.UTC(year, month - 1, day, hh - offset, mm));
     } else {
-      // Use Intl to get exact epoch in user's timezone
-      const iso = `${year}-${month}-${day}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`;
-      dateTime = new Date(
-        new Date(iso).toLocaleString("en-US", { timeZone: userTz })
+      // Correct UTC conversion from user timezone
+      const localDate = new Date(`${year}-${month}-${day}T${timeInput}:00`);
+      const utcMillis = Date.parse(
+        new Intl.DateTimeFormat("en-US", {
+          timeZone: userTz,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hourCycle: "h23",
+        }).format(localDate)
       );
+      dateTime = new Date(utcMillis);
     }
 
     const ts = Math.floor(dateTime.getTime() / 1000);
+
     return interaction.reply({ embeds: [buildTimestampEmbed(ts, userId)] });
   }
 
@@ -146,17 +148,46 @@ function buildTimestampEmbed(ts, userId) {
     .setTitle("Unix Time Converter")
     .setDescription(`Timezone selected: \`${tz}\`\nLocal time: **${localDate}**`)
     .addFields(
-      { name: "Short Time", value: `${render(ts, "t")} • \`<t:${ts}:t>\``, inline: false },
-      { name: "Long Time", value: `${render(ts, "T")} • \`<t:${ts}:T>\``, inline: false },
-      { name: "Short Date", value: `${render(ts, "d")} • \`<t:${ts}:d>\``, inline: false },
-      { name: "Long Date", value: `${render(ts, "D")} • \`<t:${ts}:D>\``, inline: false },
-      { name: "Short Date & Time", value: `${render(ts, "f")} • \`<t:${ts}:f>\``, inline: false },
-      { name: "Full Date & Time", value: `${render(ts, "F")} • \`<t:${ts}:F>\``, inline: false },
-      { name: "Relative Time", value: `${render(ts, "R")} • \`<t:${ts}:R>\``, inline: false }
+      {
+        name: "Short Time",
+        value: `${render(ts, "t")} • \`<t:${ts}:t>\``,
+        inline: false,
+      },
+      {
+        name: "Long Time",
+        value: `${render(ts, "T")} • \`<t:${ts}:T>\``,
+        inline: false,
+      },
+      {
+        name: "Short Date",
+        value: `${render(ts, "d")} • \`<t:${ts}:d>\``,
+        inline: false,
+      },
+      {
+        name: "Long Date",
+        value: `${render(ts, "D")} • \`<t:${ts}:D>\``,
+        inline: false,
+      },
+      {
+        name: "Short Date & Time",
+        value: `${render(ts, "f")} • \`<t:${ts}:f>\``,
+        inline: false,
+      },
+      {
+        name: "Full Date & Time",
+        value: `${render(ts, "F")} • \`<t:${ts}:F>\``,
+        inline: false,
+      },
+      {
+        name: "Relative Time",
+        value: `${render(ts, "R")} • \`<t:${ts}:R>\``,
+        inline: false,
+      }
     )
     .setFooter({
       text: `Made by @m4rv1n_33`,
-      iconURL: "https://cdn.discordapp.com/attachments/1447708077498437846/1448039340407132271/image.jpg",
+      iconURL:
+        "https://cdn.discordapp.com/attachments/1447708077498437846/1448039340407132271/image.jpg?ex=6939cf3a&is=69387dba&hm=8fc03d009bbce5ec92f70690dadf7360c7d3db476baab0653f024b00fd261b70&",
     });
 }
 
