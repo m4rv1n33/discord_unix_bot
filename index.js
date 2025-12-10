@@ -15,9 +15,7 @@ const moment = require('moment-timezone');
 
 const client = new Client({ 
   intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.Guilds
   ] 
 });
 
@@ -26,22 +24,23 @@ const VOLUME_PATH = "/data";
 const TZ_FILE = path.join(VOLUME_PATH, "timezones.json");
 const BACKUP_FILE = path.join(__dirname, ".timezones_backup.json");
 
-// Webhook Logger
+// Webhook Logger with status scheduling
 class WebhookLogger {
   constructor(webhookUrl) {
     this.webhook = webhookUrl ? new WebhookClient({ url: webhookUrl }) : null;
-    this.queue = [];
-    this.sending = false;
+    this.statusInterval = null;
+    this.lastStatusTime = null;
   }
 
   getColorForLevel(level) {
     const colors = {
-      'INFO': '#3498db',      // Blue
-      'WARN': '#f39c12',      // Orange
-      'ERROR': '#e74c3c',     // Red
-      'DEBUG': '#9b59b6',     // Purple
-      'SUCCESS': '#2ecc71',   // Green
-      'STARTUP': '#9b59b6'    // Purple
+      'INFO': '#3498db',
+      'WARN': '#f39c12',
+      'ERROR': '#e74c3c',
+      'DEBUG': '#9b59b6',
+      'SUCCESS': '#2ecc71',
+      'STARTUP': '#9b59b6',
+      'STATUS': '#6366f1'  // Color for status reports
     };
     return colors[level] || '#95a5a6';
   }
@@ -53,7 +52,8 @@ class WebhookLogger {
       'ERROR': 'Error',
       'DEBUG': 'Debug',
       'SUCCESS': 'Success',
-      'STARTUP': 'Startup'
+      'STARTUP': 'Startup',
+      'STATUS': 'Status Report'
     };
     return icons[level] || 'Log';
   }
@@ -82,6 +82,116 @@ class WebhookLogger {
       console.log(`[${level}] ${content}`);
       console.log(`Webhook error: ${error.message}`);
     }
+  }
+
+  // Method to send status embed
+  async sendStatusEmbed(client, storageReady, usingPersistentStorage, loadedSource, timezones) {
+    if (!this.webhook) return;
+    
+    this.lastStatusTime = new Date();
+    
+    const stats = {
+      botUptime: moment(client.readyAt).fromNow(),
+      guildCount: client.guilds.cache.size,
+      userCount: client.users.cache.size,
+      timezoneCount: Object.keys(timezones).length,
+      memoryUsage: `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`,
+      storageType: usingPersistentStorage ? 'Persistent Volume' : 'Local',
+      loadedSource: loadedSource,
+      storageReady: storageReady ? 'Yes' : 'No',
+      lastStatus: moment().format('YYYY-MM-DD HH:mm:ss')
+    };
+
+    // Get recent command activity (last 30 minutes)
+    const recentActivity = this.getRecentActivity();
+    
+    const embed = new EmbedBuilder()
+      .setColor(this.getColorForLevel('STATUS'))
+      .setTitle('Bot Status Report')
+      .setDescription(`**Scheduled Status Update**\nInterval: Every 30 minutes\nLast: ${moment(this.lastStatusTime).format('HH:mm:ss')}`)
+      .addFields(
+        { name: 'Uptime', value: stats.botUptime, inline: true },
+        { name: 'Guilds', value: `${stats.guildCount} servers`, inline: true },
+        { name: 'Users', value: `${stats.userCount} users`, inline: true },
+        { name: 'Timezones', value: `${stats.timezoneCount} configured`, inline: true },
+        { name: 'Memory', value: stats.memoryUsage, inline: true },
+        { name: 'Storage', value: stats.storageType, inline: true },
+        { name: 'Storage Ready', value: stats.storageReady, inline: true },
+        { name: 'Data Source', value: stats.loadedSource, inline: true },
+        { name: 'Recent Activity', value: recentActivity || 'No recent activity', inline: false }
+      )
+      .setFooter({ text: 'Auto Status • Next update in 30 minutes' })
+      .setTimestamp();
+
+    try {
+      await this.webhook.send({
+        username: 'Bot Status',
+        avatarURL: 'https://cdn.discordapp.com/attachments/1447708077498437846/1448039340407132271/image.jpg',
+        embeds: [embed]
+      });
+      console.log(`[STATUS] Sent scheduled status report`);
+    } catch (error) {
+      console.log(`[STATUS] Failed to send status: ${error.message}`);
+    }
+  }
+
+  // Start the scheduled status reporting
+  startStatusSchedule(client, storageReady, usingPersistentStorage, loadedSource, timezones) {
+    if (this.statusInterval) {
+      clearInterval(this.statusInterval);
+    }
+    
+    // Send first status immediately
+    this.sendStatusEmbed(client, storageReady, usingPersistentStorage, loadedSource, timezones);
+    
+    // Schedule every 30 minutes (30 * 60 * 1000 = 1,800,000 ms)
+    this.statusInterval = setInterval(() => {
+      this.sendStatusEmbed(client, storageReady, usingPersistentStorage, loadedSource, timezones);
+    }, 30 * 60 * 1000);
+    
+    console.log(`[STATUS] Scheduled status reports started (every 30 minutes)`);
+  }
+
+  // Stop the scheduled status reporting
+  stopStatusSchedule() {
+    if (this.statusInterval) {
+      clearInterval(this.statusInterval);
+      this.statusInterval = null;
+      console.log(`[STATUS] Scheduled status reports stopped`);
+    }
+  }
+
+  // Track recent activity (simplified version)
+  recentCommands = [];
+  
+  logCommand(user, command) {
+    this.recentCommands.push({
+      user: user.tag || user,
+      command: command,
+      time: new Date()
+    });
+    
+    // Keep only last 50 commands
+    if (this.recentCommands.length > 50) {
+      this.recentCommands.shift();
+    }
+  }
+  
+  getRecentActivity() {
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const recent = this.recentCommands.filter(cmd => cmd.time > thirtyMinutesAgo);
+    
+    if (recent.length === 0) return 'No commands in last 30 minutes';
+    
+    // Group by command type
+    const commandCounts = {};
+    recent.forEach(cmd => {
+      commandCounts[cmd.command] = (commandCounts[cmd.command] || 0) + 1;
+    });
+    
+    return Object.entries(commandCounts)
+      .map(([cmd, count]) => `/${cmd}: ${count}x`)
+      .join(', ');
   }
 
   info(content) {
@@ -203,6 +313,11 @@ function saveTimezones() {
 client.once("ready", async () => {
   logger = new WebhookLogger(process.env.LOG_WEBHOOK_URL);
   
+  // Start scheduled status reports
+  if (logger.webhook) {
+    logger.startStatusSchedule(client, storageReady, usingPersistentStorage, loadedSource, timezones);
+  }
+  
   // Send startup log
   await logger.sendToWebhook(
     `Bot Started Successfully\n` +
@@ -211,12 +326,14 @@ client.once("ready", async () => {
     `Users: ${client.users.cache.size}\n` +
     `Storage: ${usingPersistentStorage ? 'Persistent' : 'Local (at risk)'}\n` +
     `Timezones loaded: ${Object.keys(timezones).length} from ${loadedSource}\n` +
+    `Status reports: ${process.env.LOG_WEBHOOK_URL ? 'Scheduled every 30 minutes' : 'Disabled'}\n` +
     `Uptime: ${moment().format('YYYY-MM-DD HH:mm:ss')}`,
     'STARTUP'
   );
   
   console.log(`Logged in as ${client.user.tag}`);
   console.log(`Serving ${client.guilds.cache.size} guild(s)`);
+  console.log(`Status reports: ${process.env.LOG_WEBHOOK_URL ? 'Enabled (every 30 minutes)' : 'Disabled'}`);
 });
 
 client.on("interactionCreate", async (interaction) => {
@@ -228,6 +345,7 @@ client.on("interactionCreate", async (interaction) => {
     const targetUser = interaction.targetUser;
     
     logger.info(`Context menu: ${command} used by ${interaction.user.tag} on ${targetUser.tag}`);
+    logger.logCommand(interaction.user, command);
     
     if (command === 'Get Unix Timestamp') {
       const ts = Math.floor(Date.now() / 1000);
@@ -306,9 +424,10 @@ client.on("interactionCreate", async (interaction) => {
   const userId = interaction.user.id;
   
   logger.debug(`Command: /${command} by ${interaction.user.tag} in ${interaction.guild?.name || 'DM'}`);
+  logger.logCommand(interaction.user, command);
   
   // Admin command checks
-  if (command === "storage-status" || command === "backup-timezones" || command === "view-logs") {
+  if (command === "storage-status" || command === "backup-timezones" || command === "view-logs" || command === "force-status") {
     if (!checkAdmin(interaction)) {
       return interaction.reply({
         content: "This command requires administrator permissions.",
@@ -471,12 +590,13 @@ client.on("interactionCreate", async (interaction) => {
   }
   
   if (command === "view-logs") {
-    // Simple log viewer - in production you'd want to read from a log file
     const logInfo = {
       timezonesLoaded: Object.keys(timezones).length,
       storageType: usingPersistentStorage ? 'Persistent Volume' : 'Local',
       botUptime: moment(client.readyAt).fromNow(),
-      guildCount: client.guilds.cache.size
+      guildCount: client.guilds.cache.size,
+      nextStatus: logger.lastStatusTime ? moment(logger.lastStatusTime).add(30, 'minutes').format('HH:mm:ss') : 'Not scheduled',
+      statusEnabled: process.env.LOG_WEBHOOK_URL ? 'Yes' : 'No'
     };
     
     const embed = new EmbedBuilder()
@@ -489,12 +609,23 @@ client.on("interactionCreate", async (interaction) => {
         { name: "Guilds", value: `${logInfo.guildCount} servers`, inline: true },
         { name: "Uptime", value: logInfo.botUptime, inline: true },
         { name: "Memory Usage", value: `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`, inline: true },
-        { name: "Webhook Logging", value: process.env.LOG_WEBHOOK_URL ? "Active" : "Inactive", inline: true }
+        { name: "Status Reports", value: logInfo.statusEnabled, inline: true },
+        { name: "Next Status", value: logInfo.nextStatus, inline: true }
       )
       .setFooter({ text: "Unix Timestamp Bot Logs" })
       .setTimestamp();
     
     return interaction.reply({ embeds: [embed], ephemeral: true });
+  }
+  
+  if (command === "force-status") {
+    // Manually trigger a status report
+    await logger.sendStatusEmbed(client, storageReady, usingPersistentStorage, loadedSource, timezones);
+    
+    return interaction.reply({
+      content: `Status report sent to logging channel. Next scheduled report in 30 minutes.`,
+      ephemeral: true
+    });
   }
 });
 
@@ -505,8 +636,6 @@ function buildTimestampEmbed(ts, userId) {
   const m = moment.unix(ts).tz(tz);
   const formatted = m.format('dddd, MMMM D, YYYY [at] h:mm:ss A [(]z[)]');
   const isoString = date.toISOString();
-  const now = moment();
-  const relativeTime = m.from(now);
   
   const userMention = userId ? `<@${userId}>` : "User";
 
@@ -527,7 +656,7 @@ function buildTimestampEmbed(ts, userId) {
       },
       { 
         name: "Relative Time", 
-        value: `\`<t:${ts}:R>\` • ${relativeTime}`, 
+        value: `\`<t:${ts}:R>\`\n<t:${ts}:R>`, 
         inline: true 
       },
       { 
@@ -604,6 +733,23 @@ client.on("guildDelete", (guild) => {
   if (logger) {
     logger.warn(`Left guild: ${guild.name} (${guild.id})`);
   }
+});
+
+// Clean up on exit
+process.on('SIGINT', () => {
+  if (logger) {
+    logger.stopStatusSchedule();
+    logger.info('Bot shutting down...');
+  }
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  if (logger) {
+    logger.stopStatusSchedule();
+    logger.info('Bot shutting down...');
+  }
+  process.exit(0);
 });
 
 // Initialize everything
