@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
-const { Temporal } = require("@js-temporal/polyfill");
+const { Temporal } = globalThis; // Node 22 native Temporal
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
