@@ -1,7 +1,6 @@
 const fs = require("fs");
 const path = require("path");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
-const { DateTime } = require("luxon");
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -58,27 +57,30 @@ client.on("interactionCreate", async (interaction) => {
       }
       [, day, month, year] = dateMatch;
     } else {
-      const now = DateTime.now().setZone(userTz);
-      day = String(now.day).padStart(2, "0");
-      month = String(now.month).padStart(2, "0");
-      year = String(now.year);
+      const now = new Date();
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: userTz,
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }).format(now).split("/");
+      [day, month, year] = parts;
     }
 
     const [hh, mm] = timeInput.split(":").map(Number);
 
-    // Use Luxon to parse the datetime in user's timezone
-    const dt = DateTime.fromObject(
-      {
-        year: Number(year),
-        month: Number(month),
-        day: Number(day),
-        hour: hh,
-        minute: mm,
-      },
-      { zone: userTz }
+    // Create Date object in UTC based on local IANA time
+    const localDate = new Date(
+      Date.UTC(Number(year), Number(month) - 1, Number(day), hh, mm)
     );
 
-    const ts = Math.floor(dt.toSeconds());
+    // Calculate timestamp in the user timezone
+    const tzOffsetMs = localDate.getTime() - Number(
+      new Date(
+        localDate.toLocaleString("en-US", { timeZone: "UTC" })
+      )
+    );
+    const ts = Math.floor((localDate.getTime() - tzOffsetMs) / 1000);
 
     return interaction.reply({ embeds: [buildTimestampEmbed(ts, userId)] });
   }
@@ -102,12 +104,17 @@ client.on("interactionCreate", async (interaction) => {
 function buildTimestampEmbed(ts, userId) {
   const tz = timezones[userId] || "UTC";
 
-  const localDate = DateTime.fromSeconds(ts).setZone(tz).toLocaleString(DateTime.DATETIME_FULL);
+  const localDate = new Date(ts * 1000);
+  const formatted = new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "full",
+    timeStyle: "long",
+    timeZone: tz,
+  }).format(localDate);
 
   return new EmbedBuilder()
     .setColor("#f200ff")
     .setTitle("Unix Time Converter")
-    .setDescription(`Timezone selected: \`${tz}\`\nLocal time: **${localDate}**`)
+    .setDescription(`Timezone selected: \`${tz}\`\nLocal time: **${formatted}**`)
     .addFields(
       { name: "Short Time", value: `<t:${ts}:t>`, inline: false },
       { name: "Long Time", value: `<t:${ts}:T>`, inline: false },
