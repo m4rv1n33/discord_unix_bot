@@ -1,72 +1,286 @@
 const fs = require("fs");
 const path = require("path");
-const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+const { 
+  Client, 
+  GatewayIntentBits, 
+  EmbedBuilder, 
+  PermissionsBitField,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  ActionRowBuilder 
+} = require("discord.js");
 const moment = require('moment-timezone');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-// Determine storage path - Railway volume or local
-const storagePath = process.env.RAILWAY_VOLUME_MOUNT_PATH || "/data";
-const tzFile = path.join(storagePath, "timezones.json");
+// Storage configuration
+const VOLUME_PATH = "/data"; // Railway volume mount point
+const TZ_FILE = path.join(VOLUME_PATH, "timezones.json");
+const BACKUP_FILE = path.join(__dirname, ".timezones_backup.json"); // Gitignored local backup
 
-console.log(`Using storage path: ${storagePath}`);
-console.log(`Timezone file: ${tzFile}`);
+console.log("🚀 Starting Discord Unix Timestamp Bot");
+console.log("=== Storage Configuration ===");
 
-// Create storage directory if it doesn't exist
-if (!fs.existsSync(storagePath)) {
-  console.log(`Creating storage directory: ${storagePath}`);
-  fs.mkdirSync(storagePath, { recursive: true });
+// Initialize storage system
+let storageReady = false;
+let usingPersistentStorage = true;
+
+try {
+  // Ensure volume directory exists
+  if (!fs.existsSync(VOLUME_PATH)) {
+    console.log(`Creating directory: ${VOLUME_PATH}`);
+    fs.mkdirSync(VOLUME_PATH, { recursive: true, mode: 0o755 });
+    console.log("✅ Directory created");
+  }
+  
+  // Test write permissions
+  const testFile = path.join(VOLUME_PATH, ".write_test");
+  fs.writeFileSync(testFile, "test");
+  fs.readFileSync(testFile, "utf8");
+  fs.unlinkSync(testFile);
+  
+  storageReady = true;
+  console.log("✅ Volume storage is ready and writable");
+  console.log(`📄 Primary storage: ${TZ_FILE}`);
+  
+} catch (error) {
+  console.error("❌ Volume storage failed:", error.message);
+  console.warn("⚠️  Falling back to local storage (data may be lost on redeploy)");
+  usingPersistentStorage = false;
 }
 
-// load saved timezones (if any)
+console.log(`📋 Backup file: ${BACKUP_FILE}`);
+console.log(`💾 Persistent: ${usingPersistentStorage ? "YES" : "NO (data at risk)"}`);
+console.log("=== End Configuration ===\n");
+
+// Load timezones with smart fallback
 let timezones = {};
-if (fs.existsSync(tzFile)) {
-  try {
-    const data = fs.readFileSync(tzFile, "utf8");
-    timezones = JSON.parse(data);
-    console.log(`Loaded ${Object.keys(timezones).length} timezone(s) from storage`);
-  } catch (error) {
-    console.error("Error loading timezones:", error.message);
+let loadedSource = "none";
+
+function loadTimezones() {
+  // Try primary storage first
+  if (fs.existsSync(TZ_FILE)) {
+    try {
+      const data = fs.readFileSync(TZ_FILE, "utf8");
+      timezones = JSON.parse(data);
+      loadedSource = "volume";
+      console.log(`📊 Loaded ${Object.keys(timezones).length} timezone(s) from volume storage`);
+      return;
+    } catch (error) {
+      console.error("Error loading from volume:", error.message);
+    }
   }
-} else {
-  console.log("No existing timezone file found, starting fresh");
+  
+  // Try backup file
+  if (fs.existsSync(BACKUP_FILE)) {
+    try {
+      const data = fs.readFileSync(BACKUP_FILE, "utf8");
+      timezones = JSON.parse(data);
+      loadedSource = "backup";
+      console.log(`📊 Loaded ${Object.keys(timezones).length} timezone(s) from backup`);
+      
+      // Restore to primary storage if possible
+      if (storageReady) {
+        try {
+          fs.writeFileSync(TZ_FILE, JSON.stringify(timezones, null, 2));
+          console.log("✅ Restored backup to volume storage");
+        } catch (error) {
+          console.error("Could not restore to volume:", error.message);
+        }
+      }
+      return;
+    } catch (error) {
+      console.error("Error loading from backup:", error.message);
+    }
+  }
+  
+  console.log("🆕 No timezone data found, starting fresh");
+  loadedSource = "fresh";
 }
 
-// save tz to file
+// Initialize
+loadTimezones();
+
+// Save timezones with dual backup
 function saveTimezones() {
+  const count = Object.keys(timezones).length;
+  
   try {
-    fs.writeFileSync(tzFile, JSON.stringify(timezones, null, 2));
-    console.log(`Saved ${Object.keys(timezones).length} timezone(s) to storage`);
+    // Save to primary storage if available
+    if (storageReady) {
+      fs.writeFileSync(TZ_FILE, JSON.stringify(timezones, null, 2));
+    }
+    
+    // Always save backup
+    fs.writeFileSync(BACKUP_FILE, JSON.stringify(timezones, null, 2));
+    
+    console.log(`💾 Saved ${count} timezone(s) to:`);
+    if (storageReady) console.log(`   Volume: ${TZ_FILE}`);
+    console.log(`   Backup: ${BACKUP_FILE}`);
+    
+    return true;
   } catch (error) {
-    console.error("Error saving timezones:", error.message);
+    console.error("💥 Save failed:", error.message);
+    return false;
   }
 }
 
+// Admin check helper function
+function isAdmin(userId) {
+  // Check if user is in admin list from environment
+  const adminIds = process.env.ADMIN_IDS ? process.env.ADMIN_IDS.split(',') : [];
+  
+  // Check if user is bot owner
+  if (process.env.OWNER_ID && userId === process.env.OWNER_ID) {
+    return true;
+  }
+  
+  // Check if user is in admin list
+  if (adminIds.includes(userId)) {
+    return true;
+  }
+  
+  return false;
+}
+
+// Extended admin check for interactions
+function checkAdmin(interaction) {
+  const userId = interaction.user.id;
+  
+  // Check environment admin list first
+  if (isAdmin(userId)) {
+    return true;
+  }
+  
+  // If in a guild, check for Administrator permission
+  if (interaction.guild) {
+    const member = interaction.guild.members.cache.get(userId);
+    if (member && member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+// Bot event handlers
 client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
-  console.log(`Bot is ready! Serving ${client.guilds.cache.size} guild(s)`);
+  console.log(`📡 Serving ${client.guilds.cache.size} guild(s)`);
+  console.log(`👤 Admin users: ${process.env.ADMIN_IDS || 'None configured'}`);
+  console.log(`👑 Bot owner: ${process.env.OWNER_ID || 'Not set'}`);
 });
 
 client.on("interactionCreate", async (interaction) => {
+  // Handle context menu commands (User commands)
+  if (interaction.isUserContextMenuCommand()) {
+    const command = interaction.commandName;
+    const targetUser = interaction.targetUser;
+    
+    if (command === 'Get Unix Timestamp') {
+      const ts = Math.floor(Date.now() / 1000);
+      const targetTz = timezones[targetUser.id] || "UTC";
+      
+      const embed = new EmbedBuilder()
+        .setColor("#6366f1")
+        .setTitle(`Timestamp for ${targetUser.username}`)
+        .setDescription(`**Unix Timestamp:** \`${ts}\``)
+        .addFields(
+          { name: "Raw", value: `\`\`\`${ts}\`\`\``, inline: false },
+          { name: "Relative", value: `<t:${ts}:R>`, inline: true },
+          { name: "Full", value: `<t:${ts}:F>`, inline: true }
+        )
+        .setFooter({ text: `Requested by ${interaction.user.username}` })
+        .setTimestamp();
+      
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+    
+    if (command === 'Set Timezone for User') {
+      // Check if user has admin permissions
+      if (!checkAdmin(interaction)) {
+        return interaction.reply({
+          content: "❌ This command requires administrator permissions.",
+          ephemeral: true
+        });
+      }
+      
+      // Create modal for setting timezone
+      const modal = new ModalBuilder()
+        .setCustomId(`set_tz_modal_${targetUser.id}`)
+        .setTitle(`Set Timezone for ${targetUser.username}`);
+      
+      const timezoneInput = new TextInputBuilder()
+        .setCustomId('timezone_input')
+        .setLabel("Timezone (e.g., Europe/Zurich)")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setValue(timezones[targetUser.id] || "UTC");
+      
+      const firstActionRow = new ActionRowBuilder().addComponents(timezoneInput);
+      modal.addComponents(firstActionRow);
+      
+      return interaction.showModal(modal);
+    }
+    
+    return;
+  }
+  
+  // Handle modal submissions
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId.startsWith('set_tz_modal_')) {
+      const targetUserId = interaction.customId.replace('set_tz_modal_', '');
+      const timezone = interaction.fields.getTextInputValue('timezone_input');
+      
+      // Validate timezone
+      if (!moment.tz.zone(timezone)) {
+        return interaction.reply({
+          content: `❌ Invalid timezone: \`${timezone}\``,
+          ephemeral: true
+        });
+      }
+      
+      timezones[targetUserId] = timezone;
+      saveTimezones();
+      
+      return interaction.reply({
+        content: `✅ Set timezone for <@${targetUserId}> to \`${timezone}\``,
+        ephemeral: true
+      });
+    }
+  }
+  
+  // Handle regular slash commands
   if (!interaction.isChatInputCommand()) return;
-
+  
   const command = interaction.commandName;
   const userId = interaction.user.id;
-
+  
   console.log(`Received command: ${command} from user: ${userId}`);
-
+  
+  // Admin command checks
+  if (command === "storage-status" || command === "backup-timezones") {
+    if (!checkAdmin(interaction)) {
+      return interaction.reply({
+        content: "❌ This command requires administrator permissions.",
+        ephemeral: true
+      });
+    }
+  }
+  
   if (command === "unix-timestamp") {
     const ts = Math.floor(Date.now() / 1000);
     return interaction.reply({ embeds: [buildTimestampEmbed(ts, userId)] });
   }
-
+  
   if (command === "unix-time") {
     const timeInput = interaction.options.getString("time");
     const dateInput = interaction.options.getString("date");
     const userTz = timezones[userId] || "UTC";
-
+    
     console.log(`Processing time: ${timeInput}, date: ${dateInput || 'today'}, tz: ${userTz}`);
-
+    
     // Validate time format (HH:mm)
     const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
     if (!timePattern.test(timeInput)) {
@@ -75,7 +289,7 @@ client.on("interactionCreate", async (interaction) => {
         ephemeral: true
       });
     }
-
+    
     try {
       let m;
       
@@ -109,7 +323,7 @@ client.on("interactionCreate", async (interaction) => {
       // Convert to Unix timestamp
       const ts = m.unix();
       console.log(`Converted to timestamp: ${ts}`);
-
+      
       return interaction.reply({ embeds: [buildTimestampEmbed(ts, userId)] });
     } catch (error) {
       console.error("Error processing time:", error);
@@ -119,12 +333,12 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
   }
-
+  
   if (command === "set-timezone") {
     const tz = interaction.options.getString("timezone");
-
+    
     console.log(`Setting timezone for ${userId} to ${tz}`);
-
+    
     try {
       // Validate timezone using moment-timezone
       if (!moment.tz.zone(tz)) {
@@ -154,27 +368,80 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
   }
+  
+  if (command === "storage-status") {
+    const stats = {
+      volumePath: VOLUME_PATH,
+      timezoneFile: TZ_FILE,
+      backupFile: BACKUP_FILE,
+      storageReady,
+      usingPersistentStorage,
+      loadedSource,
+      timezoneCount: Object.keys(timezones).length,
+      fileExists: fs.existsSync(TZ_FILE),
+      backupExists: fs.existsSync(BACKUP_FILE),
+      volumeWritable: storageReady,
+      userId: interaction.user.id,
+      isAdmin: checkAdmin(interaction),
+      guild: interaction.guild ? interaction.guild.name : "DM"
+    };
+    
+    if (fs.existsSync(TZ_FILE)) {
+      stats.fileSize = fs.statSync(TZ_FILE).size;
+      stats.lastModified = fs.statSync(TZ_FILE).mtime;
+    }
+    
+    const embed = new EmbedBuilder()
+      .setColor("#6366f1")
+      .setTitle("Storage Status")
+      .setDescription(`**Bot Storage Information**\nLoaded from: \`${loadedSource}\``)
+      .addFields(
+        { name: "Timezone Count", value: `${stats.timezoneCount} users`, inline: true },
+        { name: "Persistent Storage", value: stats.usingPersistentStorage ? "✅ Yes" : "❌ No", inline: true },
+        { name: "Volume Writable", value: stats.volumeWritable ? "✅ Yes" : "❌ No", inline: true },
+        { name: "Primary File", value: stats.fileExists ? `✅ ${stats.fileSize} bytes` : "❌ Missing", inline: true },
+        { name: "Backup File", value: stats.backupExists ? "✅ Exists" : "❌ Missing", inline: true },
+        { name: "Context", value: `${stats.guild}\nUser ID: ${stats.userId}\nAdmin: ${stats.isAdmin ? "✅" : "❌"}`, inline: true }
+      )
+      .setFooter({ text: `Storage Status • ${new Date().toLocaleString()}` })
+      .setTimestamp();
+    
+    return interaction.reply({ embeds: [embed], ephemeral: true });
+  }
+  
+  if (command === "backup-timezones") {
+    const json = JSON.stringify(timezones, null, 2);
+    const timestamp = moment().format('YYYYMMDD_HHmmss');
+    const count = Object.keys(timezones).length;
+    
+    return interaction.reply({
+      content: `**Timezone Backup**\nTotal users: ${count}\nLoaded from: ${loadedSource}`,
+      files: [{
+        attachment: Buffer.from(json, 'utf8'),
+        name: `timezones_backup_${timestamp}.json`
+      }],
+      ephemeral: true
+    });
+  }
 });
 
 function buildTimestampEmbed(ts, userId) {
   const tz = timezones[userId] || "UTC";
   const date = new Date(ts * 1000);
   
-  // Format the timestamp using moment-timezone
   const m = moment.unix(ts).tz(tz);
   const formatted = m.format('dddd, MMMM D, YYYY [at] h:mm:ss A [(]z[)]');
-  
-  // Get ISO string for additional precision
   const isoString = date.toISOString();
-  
-  // Calculate relative time
   const now = moment();
   const relativeTime = m.from(now);
+  
+  // Get user mention if in a guild context
+  const userMention = userId ? `<@${userId}>` : "User";
 
   return new EmbedBuilder()
     .setColor("#6366f1")
     .setTitle("Timestamp Converter")
-    .setDescription(`**Local time in \`${tz}\`**\n${formatted}`)
+    .setDescription(`**Local time in \`${tz}\`**\n${formatted}\n*For: ${userMention}*`)
     .addFields(
       { 
         name: "Raw Unix Timestamp", 
@@ -223,15 +490,15 @@ function buildTimestampEmbed(ts, userId) {
       }
     )
     .setFooter({
-      text: `Unix Timestamp Converter • ID: ${ts}`,
+      text: `Made by @m4rv1n_33 • ID: ${ts}`,
       iconURL: "https://cdn.discordapp.com/attachments/1447708077498437846/1448039340407132271/image.jpg",
     })
     .setTimestamp();
 }
 
-// Handle errors
+// Error handling
 client.on("error", (error) => {
-  console.error("Discord.js client error:", error);
+  console.error("Discord.js error:", error);
 });
 
 process.on("unhandledRejection", (error) => {
@@ -242,9 +509,9 @@ process.on("uncaughtException", (error) => {
   console.error("Uncaught exception:", error);
 });
 
-// Start the bot
-console.log("Starting Discord bot...");
+// Start bot
+console.log("🔗 Connecting to Discord...");
 client.login(process.env.DISCORD_TOKEN).catch(error => {
-  console.error("Failed to login:", error);
+  console.error("❌ Failed to login:", error);
   process.exit(1);
 });
