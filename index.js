@@ -1,20 +1,17 @@
 const fs = require("fs");
 const path = require("path");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
-const { Temporal } = require("temporal-polyfill");
+const { Temporal } = globalThis;
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-// timezone save file
 const tzFile = path.join(__dirname, "data", "timezones.json");
 
-// load saved timezones (if any)
 let timezones = {};
 if (fs.existsSync(tzFile)) {
   timezones = JSON.parse(fs.readFileSync(tzFile, "utf8"));
 }
 
-// save tz to file
 function saveTimezones() {
   fs.writeFileSync(tzFile, JSON.stringify(timezones, null, 4));
 }
@@ -86,14 +83,8 @@ client.on("interactionCreate", async (interaction) => {
       dateTime = new Date(Date.UTC(year, month - 1, day, hh - offset, mm));
     } else {
       const [hh, mm] = timeInput.split(":").map(Number);
-      const zoned = Temporal.ZonedDateTime.from({
-        timeZone: userTz,
-        year: Number(year),
-        month: Number(month),
-        day: Number(day),
-        hour: hh,
-        minute: mm,
-      });
+      const plain = new Temporal.PlainDateTime(Number(year), Number(month), Number(day), hh, mm, 0);
+      const zoned = plain.toZonedDateTimeISO(userTz);
       dateTime = new Date(zoned.epochMilliseconds);
     }
 
