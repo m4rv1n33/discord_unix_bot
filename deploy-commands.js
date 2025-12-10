@@ -1,27 +1,26 @@
 const {
-    REST,
-    Routes,
-    SlashCommandBuilder,
-    ContextMenuCommandBuilder,
-    ApplicationCommandType,
-    PermissionsBitField,
-    ApplicationIntegrationType, 
-    InteractionContextType 
+  REST,
+  Routes,
+  SlashCommandBuilder,
+  ContextMenuCommandBuilder,
+  ApplicationCommandType,
+  PermissionsBitField,
+  ApplicationIntegrationType,
+  InteractionContextType
 } = require('discord.js');
-
 
 // Define regular slash commands
 const slashCommands = [
   new SlashCommandBuilder()
     .setName('unix-timestamp')
     .setDescription('Get the current Unix timestamp')
-    .setIntegrationTypes([ ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall ])
+    .setIntegrationTypes([ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall])
     .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel]),
 
   new SlashCommandBuilder()
     .setName('unix-time')
     .setDescription('Convert a time/date to a Unix timestamp')
-    .setIntegrationTypes([ ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall ])
+    .setIntegrationTypes([ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall])
     .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
     .addStringOption(option =>
       option
@@ -41,7 +40,7 @@ const slashCommands = [
   new SlashCommandBuilder()
     .setName('set-timezone')
     .setDescription('Set your timezone (e.g., Europe/Zurich)')
-    .setIntegrationTypes([ ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall ])
+    .setIntegrationTypes([ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall])
     .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
     .addStringOption(option =>
       option
@@ -54,16 +53,23 @@ const slashCommands = [
   new SlashCommandBuilder()
     .setName('storage-status')
     .setDescription('[Admin] Check bot storage status')
-    .setIntegrationTypes([ ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall ])
-    .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator), // Admin only
+    .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
+    .setContexts([InteractionContextType.Guild])
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
 
   new SlashCommandBuilder()
     .setName('backup-timezones')
     .setDescription('[Admin] Download timezone data backup')
-    .setIntegrationTypes([ ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall ])
-    .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator) // Admin only
+    .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
+    .setContexts([InteractionContextType.Guild])
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
+
+  new SlashCommandBuilder()
+    .setName('view-logs')
+    .setDescription('[Admin] View bot status and logs')
+    .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
+    .setContexts([InteractionContextType.Guild])
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
 
 ].map(cmd => cmd.toJSON());
 
@@ -71,12 +77,16 @@ const slashCommands = [
 const contextMenuCommands = [
   new ContextMenuCommandBuilder()
     .setName('Get Unix Timestamp')
-    .setType(ApplicationCommandType.User),
+    .setType(ApplicationCommandType.User)
+    .setIntegrationTypes([ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall])
+    .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel]),
     
   new ContextMenuCommandBuilder()
     .setName('Set Timezone for User')
     .setType(ApplicationCommandType.User)
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator), // Admin only
+    .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
+    .setContexts([InteractionContextType.Guild])
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
 ].map(cmd => cmd.toJSON());
 
 // Combine all commands
@@ -88,8 +98,8 @@ function validateEnv() {
   const missing = required.filter(key => !process.env[key]);
   
   if (missing.length > 0) {
-    console.error(`Missing environment variables: ${missing.join(', ')}`);
-    console.error('Please set these in your Railway environment variables');
+    console.log(`Missing environment variables: ${missing.join(', ')}`);
+    console.log('Please set these in your Railway environment variables');
     return false;
   }
   
@@ -129,37 +139,34 @@ async function deployCommands() {
     }
     
     // Deploy globally
-    console.log('🌍 Deploying global commands...');
+    console.log('Deploying global commands...');
     const globalData = await rest.put(
       Routes.applicationCommands(clientId),
       { body: allCommands }
     );
     
     console.log(`Registered ${globalData.length} commands globally`);
-    console.log('\nCommand List:');
     
-    // Count by type and permissions
     const slashCmds = globalData.filter(c => c.type === 1);
     const userCmds = globalData.filter(c => c.type === 2);
     
     console.log(`Slash Commands (${slashCmds.length}):`);
     slashCmds.forEach(cmd => {
       const isAdmin = cmd.default_member_permissions === '8';
-      console.log(`   /${cmd.name} - ${cmd.description} ${isAdmin ? '🔐' : ''}`);
+      console.log(`   /${cmd.name} - ${cmd.description} ${isAdmin ? '(Admin)' : ''}`);
     });
     
-    console.log(`\nUser Commands (${userCmds.length}):`);
+    console.log(`User Commands (${userCmds.length}):`);
     userCmds.forEach(cmd => {
       const isAdmin = cmd.default_member_permissions === '8';
-      console.log(`   ${cmd.name} - Right-click user ${isAdmin ? '🔐' : ''}`);
+      console.log(`   ${cmd.name} - Right-click user ${isAdmin ? '(Admin)' : ''}`);
     });
     
-    console.log('\nDeployment complete!');
-    console.log('Admin-only commands marked with 🔐');
+    console.log('Deployment complete!');
     console.log('Global commands may take up to 1 hour to appear');
     
   } catch (error) {
-    console.error('💥 Deployment failed:', error.message);
+    console.log(`Deployment failed: ${error.message}`);
     process.exit(1);
   }
 }

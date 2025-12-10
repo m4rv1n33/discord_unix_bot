@@ -1,142 +1,127 @@
 const fs = require("fs");
 const path = require("path");
-const { 
-  Client, 
-  GatewayIntentBits, 
-  EmbedBuilder, 
+const {
+  Client,
+  GatewayIntentBits,
+  EmbedBuilder,
   PermissionsBitField,
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  ActionRowBuilder 
+  ActionRowBuilder,
+  WebhookClient
 } = require("discord.js");
 const moment = require('moment-timezone');
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ 
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ] 
+});
 
-// Storage configuration
-const VOLUME_PATH = "/data"; // Railway volume mount point
+// Configuration
+const VOLUME_PATH = "/data";
 const TZ_FILE = path.join(VOLUME_PATH, "timezones.json");
-const BACKUP_FILE = path.join(__dirname, ".timezones_backup.json"); // Gitignored local backup
+const BACKUP_FILE = path.join(__dirname, ".timezones_backup.json");
 
-console.log("Starting Discord Unix Timestamp Bot");
-console.log("=== Storage Configuration ===");
-
-// Initialize storage system
-let storageReady = false;
-let usingPersistentStorage = true;
-
-try {
-  // Ensure volume directory exists
-  if (!fs.existsSync(VOLUME_PATH)) {
-    console.log(`Creating directory: ${VOLUME_PATH}`);
-    fs.mkdirSync(VOLUME_PATH, { recursive: true, mode: 0o755 });
-    console.log("Directory created");
+// Webhook Logger
+class WebhookLogger {
+  constructor(webhookUrl) {
+    this.webhook = webhookUrl ? new WebhookClient({ url: webhookUrl }) : null;
+    this.queue = [];
+    this.sending = false;
   }
-  
-  // Test write permissions
-  const testFile = path.join(VOLUME_PATH, ".write_test");
-  fs.writeFileSync(testFile, "test");
-  fs.readFileSync(testFile, "utf8");
-  fs.unlinkSync(testFile);
-  
-  storageReady = true;
-  console.log("Volume storage is ready and writable");
-  console.log(`Primary storage: ${TZ_FILE}`);
-  
-} catch (error) {
-  console.error("Volume storage failed:", error.message);
-  console.warn("Falling back to local storage (data may be lost on redeploy)");
-  usingPersistentStorage = false;
+
+  getColorForLevel(level) {
+    const colors = {
+      'INFO': '#3498db',      // Blue
+      'WARN': '#f39c12',      // Orange
+      'ERROR': '#e74c3c',     // Red
+      'DEBUG': '#9b59b6',     // Purple
+      'SUCCESS': '#2ecc71',   // Green
+      'STARTUP': '#9b59b6'    // Purple
+    };
+    return colors[level] || '#95a5a6';
+  }
+
+  getLevelIcon(level) {
+    const icons = {
+      'INFO': 'Information',
+      'WARN': 'Warning',
+      'ERROR': 'Error',
+      'DEBUG': 'Debug',
+      'SUCCESS': 'Success',
+      'STARTUP': 'Startup'
+    };
+    return icons[level] || 'Log';
+  }
+
+  async sendToWebhook(content, level = 'INFO') {
+    if (!this.webhook) {
+      console.log(`[${level}] ${content}`);
+      return;
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(this.getColorForLevel(level))
+      .setTitle(`${this.getLevelIcon(level)} - ${level}`)
+      .setDescription(`\`\`\`${content.slice(0, 3900)}\`\`\``)
+      .setTimestamp()
+      .setFooter({ text: 'Unix Timestamp Bot Logger' });
+
+    try {
+      await this.webhook.send({
+        username: 'Bot Logger',
+        avatarURL: 'https://cdn.discordapp.com/attachments/1447708077498437846/1448039340407132271/image.jpg',
+        embeds: [embed]
+      });
+      console.log(`[${level}] ${content}`);
+    } catch (error) {
+      console.log(`[${level}] ${content}`);
+      console.log(`Webhook error: ${error.message}`);
+    }
+  }
+
+  info(content) {
+    this.sendToWebhook(content, 'INFO');
+  }
+
+  warn(content) {
+    this.sendToWebhook(content, 'WARN');
+  }
+
+  error(content) {
+    this.sendToWebhook(content, 'ERROR');
+  }
+
+  debug(content) {
+    this.sendToWebhook(content, 'DEBUG');
+  }
+
+  success(content) {
+    this.sendToWebhook(content, 'SUCCESS');
+  }
 }
 
-console.log(`Backup file: ${BACKUP_FILE}`);
-console.log(`Persistent: ${usingPersistentStorage ? "YES" : "NO (data at risk)"}`);
-console.log("=== End Configuration ===\n");
+// Initialize logger
+let logger = null;
 
-// Load timezones with smart fallback
+// Storage initialization
+let storageReady = false;
+let usingPersistentStorage = true;
 let timezones = {};
 let loadedSource = "none";
 
-function loadTimezones() {
-  // Try primary storage first
-  if (fs.existsSync(TZ_FILE)) {
-    try {
-      const data = fs.readFileSync(TZ_FILE, "utf8");
-      timezones = JSON.parse(data);
-      loadedSource = "volume";
-      console.log(`Loaded ${Object.keys(timezones).length} timezone(s) from volume storage`);
-      return;
-    } catch (error) {
-      console.error("Error loading from volume:", error.message);
-    }
-  }
-  
-  // Try backup file
-  if (fs.existsSync(BACKUP_FILE)) {
-    try {
-      const data = fs.readFileSync(BACKUP_FILE, "utf8");
-      timezones = JSON.parse(data);
-      loadedSource = "backup";
-      console.log(`Loaded ${Object.keys(timezones).length} timezone(s) from backup`);
-      
-      // Restore to primary storage if possible
-      if (storageReady) {
-        try {
-          fs.writeFileSync(TZ_FILE, JSON.stringify(timezones, null, 2));
-          console.log("Restored backup to volume storage");
-        } catch (error) {
-          console.error("Could not restore to volume:", error.message);
-        }
-      }
-      return;
-    } catch (error) {
-      console.error("Error loading from backup:", error.message);
-    }
-  }
-  
-  console.log("No timezone data found, starting fresh");
-  loadedSource = "fresh";
-}
-
-// Initialize
-loadTimezones();
-
-// Save timezones with dual backup
-function saveTimezones() {
-  const count = Object.keys(timezones).length;
-  
-  try {
-    // Save to primary storage if available
-    if (storageReady) {
-      fs.writeFileSync(TZ_FILE, JSON.stringify(timezones, null, 2));
-    }
-    
-    // Always save backup
-    fs.writeFileSync(BACKUP_FILE, JSON.stringify(timezones, null, 2));
-    
-    console.log(`Saved ${count} timezone(s) to:`);
-    if (storageReady) console.log(`   Volume: ${TZ_FILE}`);
-    console.log(`   Backup: ${BACKUP_FILE}`);
-    
-    return true;
-  } catch (error) {
-    console.error("💥 Save failed:", error.message);
-    return false;
-  }
-}
-
 // Admin check helper function
 function isAdmin(userId) {
-  // Check if user is in admin list from environment
   const adminIds = process.env.ADMIN_IDS ? process.env.ADMIN_IDS.split(',') : [];
   
-  // Check if user is bot owner
   if (process.env.OWNER_ID && userId === process.env.OWNER_ID) {
     return true;
   }
   
-  // Check if user is in admin list
   if (adminIds.includes(userId)) {
     return true;
   }
@@ -148,12 +133,10 @@ function isAdmin(userId) {
 function checkAdmin(interaction) {
   const userId = interaction.user.id;
   
-  // Check environment admin list first
   if (isAdmin(userId)) {
     return true;
   }
   
-  // If in a guild, check for Administrator permission
   if (interaction.guild) {
     const member = interaction.guild.members.cache.get(userId);
     if (member && member.permissions.has(PermissionsBitField.Flags.Administrator)) {
@@ -164,24 +147,90 @@ function checkAdmin(interaction) {
   return false;
 }
 
+// Initialize storage
+function initializeStorage() {
+  console.log("Starting Discord Unix Timestamp Bot");
+  
+  try {
+    if (!fs.existsSync(VOLUME_PATH)) {
+      console.log(`Creating directory: ${VOLUME_PATH}`);
+      fs.mkdirSync(VOLUME_PATH, { recursive: true, mode: 0o755 });
+    }
+    
+    const testFile = path.join(VOLUME_PATH, ".write_test");
+    fs.writeFileSync(testFile, "test");
+    fs.readFileSync(testFile, "utf8");
+    fs.unlinkSync(testFile);
+    
+    storageReady = true;
+  } catch (error) {
+    console.log(`Volume storage failed: ${error.message}`);
+    usingPersistentStorage = false;
+  }
+}
+
+// Load timezones
+function loadTimezones() {
+  if (fs.existsSync(TZ_FILE)) {
+    try {
+      const data = fs.readFileSync(TZ_FILE, "utf8");
+      timezones = JSON.parse(data);
+      loadedSource = "volume";
+      if (logger) logger.info(`Loaded ${Object.keys(timezones).length} timezone(s) from volume storage`);
+    } catch (error) {
+      if (logger) logger.error(`Error loading from volume: ${error.message}`);
+    }
+  }
+}
+
+// Save timezones
+function saveTimezones() {
+  const count = Object.keys(timezones).length;
+  try {
+    if (storageReady) {
+      fs.writeFileSync(TZ_FILE, JSON.stringify(timezones, null, 2));
+    }
+    fs.writeFileSync(BACKUP_FILE, JSON.stringify(timezones, null, 2));
+    if (logger) logger.success(`Saved ${count} timezone(s)`);
+    return true;
+  } catch (error) {
+    if (logger) logger.error(`Save failed: ${error.message}`);
+    return false;
+  }
+}
+
 // Bot event handlers
-client.once("ready", () => {
+client.once("ready", async () => {
+  logger = new WebhookLogger(process.env.LOG_WEBHOOK_URL);
+  
+  // Send startup log
+  await logger.sendToWebhook(
+    `Bot Started Successfully\n` +
+    `Logged in as: ${client.user.tag}\n` +
+    `Guilds: ${client.guilds.cache.size}\n` +
+    `Users: ${client.users.cache.size}\n` +
+    `Storage: ${usingPersistentStorage ? 'Persistent' : 'Local (at risk)'}\n` +
+    `Timezones loaded: ${Object.keys(timezones).length} from ${loadedSource}\n` +
+    `Uptime: ${moment().format('YYYY-MM-DD HH:mm:ss')}`,
+    'STARTUP'
+  );
+  
   console.log(`Logged in as ${client.user.tag}`);
   console.log(`Serving ${client.guilds.cache.size} guild(s)`);
-  console.log(`Admin users: ${process.env.ADMIN_IDS || 'None configured'}`);
-  console.log(`Bot owner: ${process.env.OWNER_ID || 'Not set'}`);
 });
 
 client.on("interactionCreate", async (interaction) => {
-  // Handle context menu commands (User commands)
+  if (!logger) return;
+  
+  // Handle context menu commands
   if (interaction.isUserContextMenuCommand()) {
     const command = interaction.commandName;
     const targetUser = interaction.targetUser;
     
+    logger.info(`Context menu: ${command} used by ${interaction.user.tag} on ${targetUser.tag}`);
+    
     if (command === 'Get Unix Timestamp') {
       const ts = Math.floor(Date.now() / 1000);
-      const targetTz = timezones[targetUser.id] || "UTC";
-      
       const embed = new EmbedBuilder()
         .setColor("#6366f1")
         .setTitle(`Timestamp for ${targetUser.username}`)
@@ -198,15 +247,13 @@ client.on("interactionCreate", async (interaction) => {
     }
     
     if (command === 'Set Timezone for User') {
-      // Check if user has admin permissions
       if (!checkAdmin(interaction)) {
         return interaction.reply({
-          content: "❌ This command requires administrator permissions.",
+          content: "This command requires administrator permissions.",
           ephemeral: true
         });
       }
       
-      // Create modal for setting timezone
       const modal = new ModalBuilder()
         .setCustomId(`set_tz_modal_${targetUser.id}`)
         .setTitle(`Set Timezone for ${targetUser.username}`);
@@ -233,10 +280,9 @@ client.on("interactionCreate", async (interaction) => {
       const targetUserId = interaction.customId.replace('set_tz_modal_', '');
       const timezone = interaction.fields.getTextInputValue('timezone_input');
       
-      // Validate timezone
       if (!moment.tz.zone(timezone)) {
         return interaction.reply({
-          content: `❌ Invalid timezone: \`${timezone}\``,
+          content: `Invalid timezone: \`${timezone}\``,
           ephemeral: true
         });
       }
@@ -244,8 +290,10 @@ client.on("interactionCreate", async (interaction) => {
       timezones[targetUserId] = timezone;
       saveTimezones();
       
+      logger.info(`Admin ${interaction.user.tag} set timezone for user ${targetUserId} to ${timezone}`);
+      
       return interaction.reply({
-        content: `✅ Set timezone for <@${targetUserId}> to \`${timezone}\``,
+        content: `Set timezone for <@${targetUserId}> to \`${timezone}\``,
         ephemeral: true
       });
     }
@@ -257,13 +305,13 @@ client.on("interactionCreate", async (interaction) => {
   const command = interaction.commandName;
   const userId = interaction.user.id;
   
-  console.log(`Received command: ${command} from user: ${userId}`);
+  logger.debug(`Command: /${command} by ${interaction.user.tag} in ${interaction.guild?.name || 'DM'}`);
   
   // Admin command checks
-  if (command === "storage-status" || command === "backup-timezones") {
+  if (command === "storage-status" || command === "backup-timezones" || command === "view-logs") {
     if (!checkAdmin(interaction)) {
       return interaction.reply({
-        content: "❌ This command requires administrator permissions.",
+        content: "This command requires administrator permissions.",
         ephemeral: true
       });
     }
@@ -271,6 +319,7 @@ client.on("interactionCreate", async (interaction) => {
   
   if (command === "unix-timestamp") {
     const ts = Math.floor(Date.now() / 1000);
+    logger.debug(`Generated timestamp: ${ts} for user ${interaction.user.tag}`);
     return interaction.reply({ embeds: [buildTimestampEmbed(ts, userId)] });
   }
   
@@ -279,9 +328,8 @@ client.on("interactionCreate", async (interaction) => {
     const dateInput = interaction.options.getString("date");
     const userTz = timezones[userId] || "UTC";
     
-    console.log(`Processing time: ${timeInput}, date: ${dateInput || 'today'}, tz: ${userTz}`);
+    logger.debug(`Processing /unix-time: ${timeInput} ${dateInput || '(no date)'} for ${userTz}`);
     
-    // Validate time format (HH:mm)
     const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
     if (!timePattern.test(timeInput)) {
       return interaction.reply({
@@ -294,7 +342,6 @@ client.on("interactionCreate", async (interaction) => {
       let m;
       
       if (dateInput) {
-        // Validate date format (dd-mm-yyyy)
         const datePattern = /^(\d{2})-(\d{2})-(\d{4})$/;
         const dateMatch = dateInput.match(datePattern);
         if (!dateMatch) {
@@ -303,11 +350,9 @@ client.on("interactionCreate", async (interaction) => {
             ephemeral: true
           });
         }
-        // Format as DD-MM-YYYY HH:mm for moment parsing
         const dateStr = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]} ${timeInput}`;
         m = moment.tz(dateStr, 'DD-MM-YYYY HH:mm', userTz);
       } else {
-        // Use current date with specified time
         const today = moment().tz(userTz);
         const dateStr = `${today.format('DD-MM-YYYY')} ${timeInput}`;
         m = moment.tz(dateStr, 'DD-MM-YYYY HH:mm', userTz);
@@ -320,13 +365,12 @@ client.on("interactionCreate", async (interaction) => {
         });
       }
       
-      // Convert to Unix timestamp
       const ts = m.unix();
-      console.log(`Converted to timestamp: ${ts}`);
+      logger.info(`User ${interaction.user.tag} converted ${timeInput} ${dateInput || ''} to timestamp: ${ts}`);
       
       return interaction.reply({ embeds: [buildTimestampEmbed(ts, userId)] });
     } catch (error) {
-      console.error("Error processing time:", error);
+      logger.error(`Error in /unix-time: ${error.message}`);
       return interaction.reply({
         content: "An error occurred while processing the time.",
         ephemeral: true
@@ -337,10 +381,9 @@ client.on("interactionCreate", async (interaction) => {
   if (command === "set-timezone") {
     const tz = interaction.options.getString("timezone");
     
-    console.log(`Setting timezone for ${userId} to ${tz}`);
+    logger.info(`User ${interaction.user.tag} attempting to set timezone to: ${tz}`);
     
     try {
-      // Validate timezone using moment-timezone
       if (!moment.tz.zone(tz)) {
         return interaction.reply({
           content: "**Invalid timezone**\nUse IANA timezone format like `Europe/Zurich`.",
@@ -351,17 +394,18 @@ client.on("interactionCreate", async (interaction) => {
       timezones[userId] = tz;
       saveTimezones();
       
-      // Get current time in new timezone for confirmation
       const now = moment().tz(tz);
       const timeStr = now.format('HH:mm');
       const dateStr = now.format('DD/MM/YYYY');
+      
+      logger.success(`User ${interaction.user.tag} set timezone to ${tz}`);
       
       return interaction.reply({
         content: `**Timezone updated**\n\`${tz}\`\n**Current time:** ${timeStr} • ${dateStr}`,
         ephemeral: false
       });
     } catch (error) {
-      console.error("Error setting timezone:", error);
+      logger.error(`Error setting timezone: ${error.message}`);
       return interaction.reply({
         content: "**Invalid timezone**\nUse IANA timezone format like `Europe/Zurich`.",
         ephemeral: true
@@ -397,11 +441,11 @@ client.on("interactionCreate", async (interaction) => {
       .setDescription(`**Bot Storage Information**\nLoaded from: \`${loadedSource}\``)
       .addFields(
         { name: "Timezone Count", value: `${stats.timezoneCount} users`, inline: true },
-        { name: "Persistent Storage", value: stats.usingPersistentStorage ? "✅ Yes" : "❌ No", inline: true },
-        { name: "Volume Writable", value: stats.volumeWritable ? "✅ Yes" : "❌ No", inline: true },
-        { name: "Primary File", value: stats.fileExists ? `✅ ${stats.fileSize} bytes` : "❌ Missing", inline: true },
-        { name: "Backup File", value: stats.backupExists ? "✅ Exists" : "❌ Missing", inline: true },
-        { name: "Context", value: `${stats.guild}\nUser ID: ${stats.userId}\nAdmin: ${stats.isAdmin ? "✅" : "❌"}`, inline: true }
+        { name: "Persistent Storage", value: stats.usingPersistentStorage ? "Yes" : "No (data at risk)", inline: true },
+        { name: "Volume Writable", value: stats.volumeWritable ? "Yes" : "No", inline: true },
+        { name: "Primary File", value: stats.fileExists ? `${stats.fileSize} bytes` : "Missing", inline: true },
+        { name: "Backup File", value: stats.backupExists ? "Exists" : "Missing", inline: true },
+        { name: "Context", value: `${stats.guild}\nUser ID: ${stats.userId}\nAdmin: ${stats.isAdmin ? "Yes" : "No"}`, inline: true }
       )
       .setFooter({ text: `Storage Status • ${new Date().toLocaleString()}` })
       .setTimestamp();
@@ -414,6 +458,8 @@ client.on("interactionCreate", async (interaction) => {
     const timestamp = moment().format('YYYYMMDD_HHmmss');
     const count = Object.keys(timezones).length;
     
+    logger.info(`Admin ${interaction.user.tag} downloaded timezone backup (${count} users)`);
+    
     return interaction.reply({
       content: `**Timezone Backup**\nTotal users: ${count}\nLoaded from: ${loadedSource}`,
       files: [{
@@ -422,6 +468,33 @@ client.on("interactionCreate", async (interaction) => {
       }],
       ephemeral: true
     });
+  }
+  
+  if (command === "view-logs") {
+    // Simple log viewer - in production you'd want to read from a log file
+    const logInfo = {
+      timezonesLoaded: Object.keys(timezones).length,
+      storageType: usingPersistentStorage ? 'Persistent Volume' : 'Local',
+      botUptime: moment(client.readyAt).fromNow(),
+      guildCount: client.guilds.cache.size
+    };
+    
+    const embed = new EmbedBuilder()
+      .setColor("#3498db")
+      .setTitle("Bot Status Log")
+      .setDescription(`**Current Bot Status**\nLast updated: ${moment().format('HH:mm:ss')}`)
+      .addFields(
+        { name: "Timezones Loaded", value: `${logInfo.timezonesLoaded} users`, inline: true },
+        { name: "Storage", value: logInfo.storageType, inline: true },
+        { name: "Guilds", value: `${logInfo.guildCount} servers`, inline: true },
+        { name: "Uptime", value: logInfo.botUptime, inline: true },
+        { name: "Memory Usage", value: `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`, inline: true },
+        { name: "Webhook Logging", value: process.env.LOG_WEBHOOK_URL ? "Active" : "Inactive", inline: true }
+      )
+      .setFooter({ text: "Unix Timestamp Bot Logs" })
+      .setTimestamp();
+    
+    return interaction.reply({ embeds: [embed], ephemeral: true });
   }
 });
 
@@ -435,7 +508,6 @@ function buildTimestampEmbed(ts, userId) {
   const now = moment();
   const relativeTime = m.from(now);
   
-  // Get user mention if in a guild context
   const userMention = userId ? `<@${userId}>` : "User";
 
   return new EmbedBuilder()
@@ -455,7 +527,7 @@ function buildTimestampEmbed(ts, userId) {
       },
       { 
         name: "Relative Time", 
-        value: `\`<t:${ts}:R>\`\n<t:${ts}:R>`, 
+        value: `\`<t:${ts}:R>\` • ${relativeTime}`, 
         inline: true 
       },
       { 
@@ -490,28 +562,57 @@ function buildTimestampEmbed(ts, userId) {
       }
     )
     .setFooter({
-      text: `Made by @m4rv1n_33 • ID: ${ts}`,
+      text: `Unix Timestamp Converter • ID: ${ts}`,
       iconURL: "https://cdn.discordapp.com/attachments/1447708077498437846/1448039340407132271/image.jpg",
     })
     .setTimestamp();
 }
 
-// Error handling
+// Enhanced error logging
 client.on("error", (error) => {
-  console.error("Discord.js error:", error);
+  if (logger) {
+    logger.error(`Discord.js Client Error: ${error.message}`);
+  } else {
+    console.log(`Discord.js error: ${error.message}`);
+  }
 });
 
 process.on("unhandledRejection", (error) => {
-  console.error("Unhandled promise rejection:", error);
+  if (logger) {
+    logger.error(`Unhandled Promise Rejection: ${error.message}`);
+  } else {
+    console.log(`Unhandled promise rejection: ${error.message}`);
+  }
 });
 
 process.on("uncaughtException", (error) => {
-  console.error("Uncaught exception:", error);
+  if (logger) {
+    logger.error(`Uncaught Exception: ${error.message}`);
+  } else {
+    console.log(`Uncaught exception: ${error.message}`);
+  }
 });
+
+// Log bot status changes
+client.on("guildCreate", (guild) => {
+  if (logger) {
+    logger.success(`Joined new guild: ${guild.name} (${guild.id}) - Members: ${guild.memberCount}`);
+  }
+});
+
+client.on("guildDelete", (guild) => {
+  if (logger) {
+    logger.warn(`Left guild: ${guild.name} (${guild.id})`);
+  }
+});
+
+// Initialize everything
+initializeStorage();
+loadTimezones();
 
 // Start bot
 console.log("Connecting to Discord...");
 client.login(process.env.DISCORD_TOKEN).catch(error => {
-  console.error("Failed to login:", error);
+  console.log(`Failed to login: ${error.message}`);
   process.exit(1);
 });
