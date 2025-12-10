@@ -57,7 +57,7 @@ client.on("interactionCreate", async (interaction) => {
     const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
     if (!timePattern.test(timeInput)) {
       return interaction.reply({
-        content: "❌ Invalid time format! Use `HH:mm` in 24-hour format (example: 14:30).",
+        content: "**Invalid time format**\nUse `HH:mm` in 24-hour format (example: `14:30`).",
         ephemeral: true
       });
     }
@@ -71,7 +71,7 @@ client.on("interactionCreate", async (interaction) => {
         const dateMatch = dateInput.match(datePattern);
         if (!dateMatch) {
           return interaction.reply({
-            content: "❌ Invalid date format! Use `dd-mm-yyyy` (example: 25-12-2025).",
+            content: "**Invalid date format**\nUse `dd-mm-yyyy` (example: `25-12-2025`).",
             ephemeral: true
           });
         }
@@ -87,7 +87,7 @@ client.on("interactionCreate", async (interaction) => {
       
       if (!m.isValid()) {
         return interaction.reply({
-          content: "❌ Invalid date/time combination.",
+          content: "Invalid date/time combination.",
           ephemeral: true
         });
       }
@@ -99,7 +99,7 @@ client.on("interactionCreate", async (interaction) => {
     } catch (error) {
       console.error("Error processing time:", error);
       return interaction.reply({
-        content: "❌ An error occurred while processing the time.",
+        content: "An error occurred while processing the time.",
         ephemeral: true
       });
     }
@@ -112,18 +112,27 @@ client.on("interactionCreate", async (interaction) => {
       // Validate timezone using moment-timezone
       if (!moment.tz.zone(tz)) {
         return interaction.reply({
-          content: "❌ Invalid timezone. Use IANA timezone like `Europe/Zurich`.",
+          content: "**Invalid timezone**\nUse IANA timezone format like `Europe/Zurich`.",
           ephemeral: true
         });
       }
       
       timezones[userId] = tz;
       saveTimezones();
-      return interaction.reply(`✅ Timezone set to **${tz}** and saved 📝`);
+      
+      // Get current time in new timezone for confirmation
+      const now = moment().tz(tz);
+      const timeStr = now.format('HH:mm');
+      const dateStr = now.format('DD/MM/YYYY');
+      
+      return interaction.reply({
+        content: `**Timezone updated**\n\`${tz}\`\n**Current time:** ${timeStr} • ${dateStr}`,
+        ephemeral: false
+      });
     } catch (error) {
       console.error("Error setting timezone:", error);
       return interaction.reply({
-        content: "❌ Invalid timezone. Use IANA timezone like `Europe/Zurich`.",
+        content: "**Invalid timezone**\nUse IANA timezone format like `Europe/Zurich`.",
         ephemeral: true
       });
     }
@@ -132,28 +141,72 @@ client.on("interactionCreate", async (interaction) => {
 
 function buildTimestampEmbed(ts, userId) {
   const tz = timezones[userId] || "UTC";
-
+  const date = new Date(ts * 1000);
+  
   // Format the timestamp using moment-timezone
   const m = moment.unix(ts).tz(tz);
   const formatted = m.format('dddd, MMMM D, YYYY [at] h:mm:ss A [(]z[)]');
+  
+  // Get ISO string for additional precision
+  const isoString = date.toISOString();
+  
+  // Calculate relative time
+  const now = moment();
+  const relativeTime = m.from(now);
 
   return new EmbedBuilder()
-    .setColor("#f200ff")
-    .setTitle("⏰ Unix Time Converter")
-    .setDescription(`**Timezone:** \`${tz}\`\n**Local time:** ${formatted}`)
+    .setColor("#6366f1") // Modern indigo color
+    .setTitle("Timestamp Converter")
+    .setDescription(`**Local time in \`${tz}\`**\n${formatted}`)
     .addFields(
-      { name: "📅 Raw Unix Timestamp", value: `\`\`\`\n${ts}\n\`\`\``, inline: false },
-      { name: "⏱️ Discord Timestamp Formats", value: "Copy these formats for Discord:", inline: false },
-      { name: "Short Time", value: `\`<t:${ts}:t>\`\n<t:${ts}:t>`, inline: true },
-      { name: "Long Time", value: `\`<t:${ts}:T>\`\n<t:${ts}:T>`, inline: true },
-      { name: "Short Date", value: `\`<t:${ts}:d>\`\n<t:${ts}:d>`, inline: true },
-      { name: "Long Date", value: `\`<t:${ts}:D>\`\n<t:${ts}:D>`, inline: true },
-      { name: "Short Date & Time", value: `\`<t:${ts}:f>\`\n<t:${ts}:f>`, inline: true },
-      { name: "Full Date & Time", value: `\`<t:${ts}:F>\`\n<t:${ts}:F>`, inline: true },
-      { name: "Relative Time", value: `\`<t:${ts}:R>\`\n<t:${ts}:R>`, inline: true }
+      { 
+        name: "Raw Unix Timestamp", 
+        value: `\`\`\`${ts}\`\`\``, 
+        inline: false 
+      },
+      { 
+        name: "ISO 8601", 
+        value: `\`\`\`${isoString}\`\`\``, 
+        inline: false 
+      },
+      { 
+        name: "Relative Time", 
+        value: `\`<t:${ts}:R>\` • ${relativeTime}`, 
+        inline: true 
+      },
+      { 
+        name: "Date & Time", 
+        value: `\`<t:${ts}:f>\`\n<t:${ts}:f>`, 
+        inline: true 
+      },
+      { 
+        name: "Full Format", 
+        value: `\`<t:${ts}:F>\`\n<t:${ts}:F>`, 
+        inline: true 
+      },
+      { 
+        name: "Time Only", 
+        value: `\`<t:${ts}:T>\`\n<t:${ts}:T>`, 
+        inline: true 
+      },
+      { 
+        name: "Date Only", 
+        value: `\`<t:${ts}:D>\`\n<t:${ts}:D>`, 
+        inline: true 
+      },
+      { 
+        name: "Short Date", 
+        value: `\`<t:${ts}:d>\`\n<t:${ts}:d>`, 
+        inline: true 
+      },
+      { 
+        name: "Short Time", 
+        value: `\`<t:${ts}:t>\`\n<t:${ts}:t>`, 
+        inline: true 
+      }
     )
     .setFooter({
-      text: `Made by @m4rv1n_33`,
+      text: `Made by @m4rv1n_33 • ID: ${ts}`,
       iconURL: "https://cdn.discordapp.com/attachments/1447708077498437846/1448039340407132271/image.jpg",
     })
     .setTimestamp();
