@@ -1,4 +1,3 @@
-require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
@@ -88,47 +87,17 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     // Build the Date object
-    // Parse HH:mm
     const [hh, mm] = timeInput.split(":").map(Number);
 
-    // Create the date "in" the user's timezone by using UTC components
-    const dateTime = new Date(Date.UTC(year, month - 1, day, hh, mm));
+    const zoned = new Date(
+      new Date(`${year}-${month}-${day}T${hh}:${mm}:00`).toLocaleString("en-US", {
+        timeZone: userTz,
+      })
+    );
 
-    // Then shift according to user's timezone
-    let ts;
+    const ts = Math.floor(zoned.getTime() / 1000);
 
-    if (userTz.startsWith("GMT")) {
-        const offset = parseInt(userTz.replace("GMT", ""), 10);
-        ts = Math.floor(dateTime.getTime() / 1000) - offset * 3600;
-    } else {
-        // For IANA zones we must use Intl to compute correct offset
-        const formatter = new Intl.DateTimeFormat("en-GB", {
-            timeZone: userTz,
-            hour12: false,
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit"
-        });
-
-        const parts = formatter.formatToParts(dateTime).reduce((acc, p) => {
-            acc[p.type] = p.value;
-            return acc;
-        }, {});
-
-        const zoned = Date.UTC(
-            parts.year,
-            parts.month - 1,
-            parts.day,
-            parts.hour,
-            parts.minute
-        );
-
-        ts = Math.floor(zoned / 1000);
-    }
-
-    if (isNaN(dateTime)) {
+    if (isNaN(zoned)) {
       return interaction.reply("❌ Invalid date and time combination.");
     }
 
