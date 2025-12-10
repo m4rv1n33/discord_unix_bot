@@ -562,7 +562,7 @@ function buildTimestampEmbed(ts, userId) {
       }
     )
     .setFooter({
-      text: `Unix Timestamp Converter • ID: ${ts}`,
+      text: `Made by @m4rv1n_33 • ID: ${ts}`,
       iconURL: "https://cdn.discordapp.com/attachments/1447708077498437846/1448039340407132271/image.jpg",
     })
     .setTimestamp();
