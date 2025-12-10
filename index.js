@@ -1,22 +1,24 @@
 const fs = require("fs");
 const path = require("path");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
-const { Temporal } = globalThis; // Node 22 native Temporal
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
+// timezone save file
 const tzFile = path.join(__dirname, "data", "timezones.json");
 
+// load saved timezones (if any)
 let timezones = {};
 if (fs.existsSync(tzFile)) {
   timezones = JSON.parse(fs.readFileSync(tzFile, "utf8"));
 }
 
+// save tz to file
 function saveTimezones() {
   fs.writeFileSync(tzFile, JSON.stringify(timezones, null, 4));
 }
 
-client.once("clientReady", () => {
+client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
@@ -32,7 +34,6 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (command === "unix-time") {
-    const userId = interaction.user.id;
     const timeInput = interaction.options.getString("time");
     const dateInput = interaction.options.getString("date");
 
@@ -77,19 +78,20 @@ client.on("interactionCreate", async (interaction) => {
 
     let dateTime;
 
+    const [hh, mm] = timeInput.split(":").map(Number);
+
     if (userTz.startsWith("GMT")) {
       const offset = parseInt(userTz.replace("GMT", ""), 10);
-      const [hh, mm] = timeInput.split(":").map(Number);
       dateTime = new Date(Date.UTC(year, month - 1, day, hh - offset, mm));
     } else {
-      const [hh, mm] = timeInput.split(":").map(Number);
-      const plain = new Temporal.PlainDateTime(Number(year), Number(month), Number(day), hh, mm, 0);
-      const zoned = plain.toZonedDateTimeISO(userTz);
-      dateTime = new Date(zoned.epochMilliseconds);
+      // Use Intl to get exact epoch in user's timezone
+      const iso = `${year}-${month}-${day}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`;
+      dateTime = new Date(
+        new Date(iso).toLocaleString("en-US", { timeZone: userTz })
+      );
     }
 
     const ts = Math.floor(dateTime.getTime() / 1000);
-
     return interaction.reply({ embeds: [buildTimestampEmbed(ts, userId)] });
   }
 
@@ -128,34 +130,34 @@ function buildTimestampEmbed(ts, userId) {
   const tz = timezones[userId] || "UTC";
 
   let localDate;
-  if (tz.startsWith('GMT')) {
-      const offset = parseInt(tz.replace('GMT', ''), 10);
-      localDate = formatWithOffset(ts, offset);
+  if (tz.startsWith("GMT")) {
+    const offset = parseInt(tz.replace("GMT", ""), 10);
+    localDate = formatWithOffset(ts, offset);
   } else {
-      localDate = new Intl.DateTimeFormat("en-GB", {
-          dateStyle: "full",
-          timeStyle: "long",
-          timeZone: tz
-      }).format(new Date(ts * 1000));
+    localDate = new Intl.DateTimeFormat("en-GB", {
+      dateStyle: "full",
+      timeStyle: "long",
+      timeZone: tz,
+    }).format(new Date(ts * 1000));
   }
 
   return new EmbedBuilder()
-      .setColor('#f200ff')
-      .setTitle('Unix Time Converter')
-      .setDescription(`Timezone selected: \`${tz}\`\nLocal time: **${localDate}**`)
-      .addFields(
-          { name: 'Short Time', value: `${render(ts, 't')} • \`<t:${ts}:t>\``, inline: false },
-          { name: 'Long Time', value: `${render(ts, 'T')} • \`<t:${ts}:T>\``, inline: false },
-          { name: 'Short Date', value: `${render(ts, 'd')} • \`<t:${ts}:d>\``, inline: false },
-          { name: 'Long Date', value: `${render(ts, 'D')} • \`<t:${ts}:D>\``, inline: false },
-          { name: 'Short Date & Time', value: `${render(ts, 'f')} • \`<t:${ts}:f>\``, inline: false },
-          { name: 'Full Date & Time', value: `${render(ts, 'F')} • \`<t:${ts}:F>\``, inline: false },
-          { name: 'Relative Time', value: `${render(ts, 'R')} • \`<t:${ts}:R>\``, inline: false }
-      )
-      .setFooter({ 
-          text: `Made by @m4rv1n_33`,
-          iconURL: 'https://cdn.discordapp.com/attachments/1447708077498437846/1448039340407132271/image.jpg?ex=6939cf3a&is=69387dba&hm=8fc03d009bbce5ec92f70690dadf7360c7d3db476baab0653f024b00fd261b70&' 
-      });
+    .setColor("#f200ff")
+    .setTitle("Unix Time Converter")
+    .setDescription(`Timezone selected: \`${tz}\`\nLocal time: **${localDate}**`)
+    .addFields(
+      { name: "Short Time", value: `${render(ts, "t")} • \`<t:${ts}:t>\``, inline: false },
+      { name: "Long Time", value: `${render(ts, "T")} • \`<t:${ts}:T>\``, inline: false },
+      { name: "Short Date", value: `${render(ts, "d")} • \`<t:${ts}:d>\``, inline: false },
+      { name: "Long Date", value: `${render(ts, "D")} • \`<t:${ts}:D>\``, inline: false },
+      { name: "Short Date & Time", value: `${render(ts, "f")} • \`<t:${ts}:f>\``, inline: false },
+      { name: "Full Date & Time", value: `${render(ts, "F")} • \`<t:${ts}:F>\``, inline: false },
+      { name: "Relative Time", value: `${render(ts, "R")} • \`<t:${ts}:R>\``, inline: false }
+    )
+    .setFooter({
+      text: `Made by @m4rv1n_33`,
+      iconURL: "https://cdn.discordapp.com/attachments/1447708077498437846/1448039340407132271/image.jpg",
+    });
 }
 
 function render(ts, style) {
