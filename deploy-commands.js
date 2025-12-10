@@ -4,11 +4,13 @@ const { REST, Routes, SlashCommandBuilder, ContextMenuCommandBuilder, Applicatio
 const slashCommands = [
   new SlashCommandBuilder()
     .setName('unix-timestamp')
-    .setDescription('Get the current Unix timestamp'),
+    .setDescription('Get the current Unix timestamp')
+    .setIntegrationTypes([ ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall ]),
 
   new SlashCommandBuilder()
     .setName('unix-time')
     .setDescription('Convert a time/date to a Unix timestamp')
+    .setIntegrationTypes([ ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall ])
     .addStringOption(option =>
       option
         .setName('time')
@@ -27,6 +29,7 @@ const slashCommands = [
   new SlashCommandBuilder()
     .setName('set-timezone')
     .setDescription('Set your timezone (e.g., Europe/Zurich)')
+    .setIntegrationTypes([ ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall ])
     .addStringOption(option =>
       option
         .setName('timezone')
@@ -38,11 +41,13 @@ const slashCommands = [
   new SlashCommandBuilder()
     .setName('storage-status')
     .setDescription('[Admin] Check bot storage status')
+    .setIntegrationTypes([ ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall ])
     .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator), // Admin only
 
   new SlashCommandBuilder()
     .setName('backup-timezones')
     .setDescription('[Admin] Download timezone data backup')
+    .setIntegrationTypes([ ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall ])
     .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator) // Admin only
 
 ].map(cmd => cmd.toJSON());
