@@ -15,12 +15,14 @@ const slashCommands = [
   new SlashCommandBuilder()
     .setName('unix-timestamp')
     .setDescription('Get the current Unix timestamp')
-    .setIntegrationTypes([ ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall ]),
+    .setIntegrationTypes([ ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall ])
+    .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel]),
 
   new SlashCommandBuilder()
     .setName('unix-time')
     .setDescription('Convert a time/date to a Unix timestamp')
     .setIntegrationTypes([ ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall ])
+    .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
     .addStringOption(option =>
       option
         .setName('time')
@@ -40,6 +42,7 @@ const slashCommands = [
     .setName('set-timezone')
     .setDescription('Set your timezone (e.g., Europe/Zurich)')
     .setIntegrationTypes([ ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall ])
+    .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
     .addStringOption(option =>
       option
         .setName('timezone')
@@ -52,12 +55,14 @@ const slashCommands = [
     .setName('storage-status')
     .setDescription('[Admin] Check bot storage status')
     .setIntegrationTypes([ ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall ])
+    .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
     .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator), // Admin only
 
   new SlashCommandBuilder()
     .setName('backup-timezones')
     .setDescription('[Admin] Download timezone data backup')
     .setIntegrationTypes([ ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall ])
+    .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
     .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator) // Admin only
 
 ].map(cmd => cmd.toJSON());
