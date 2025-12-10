@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+const { DateTime } = require("luxon");
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -36,6 +37,7 @@ client.on("interactionCreate", async (interaction) => {
   if (command === "unix-time") {
     const timeInput = interaction.options.getString("time");
     const dateInput = interaction.options.getString("date");
+    const userTz = timezones[userId] || "UTC";
 
     const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
     if (!timePattern.test(timeInput)) {
@@ -43,8 +45,6 @@ client.on("interactionCreate", async (interaction) => {
         "❌ Invalid time format! Use `HH:mm` in 24-hour format (example: 14:30)."
       );
     }
-
-    const userTz = timezones[userId] || "UTC";
 
     let day, month, year;
 
@@ -58,34 +58,27 @@ client.on("interactionCreate", async (interaction) => {
       }
       [, day, month, year] = dateMatch;
     } else {
-      const now = new Date();
-      const userDateStr = new Intl.DateTimeFormat("en-GB", {
-        timeZone: userTz,
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      }).format(now);
-      [day, month, year] = userDateStr.split("/");
+      const now = DateTime.now().setZone(userTz);
+      day = String(now.day).padStart(2, "0");
+      month = String(now.month).padStart(2, "0");
+      year = String(now.year);
     }
 
     const [hh, mm] = timeInput.split(":").map(Number);
 
-    // Convert input date/time in user's timezone to UTC timestamp
-    const dateStr = `${year}-${month}-${day}T${timeInput}:00`;
-    const ts = Math.floor(
-      new Date(
-        new Intl.DateTimeFormat("en-US", {
-          timeZone: userTz,
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          hourCycle: "h23",
-        }).format(new Date(dateStr))
-      ).getTime() / 1000
+    // Use Luxon to parse the datetime in user's timezone
+    const dt = DateTime.fromObject(
+      {
+        year: Number(year),
+        month: Number(month),
+        day: Number(day),
+        hour: hh,
+        minute: mm,
+      },
+      { zone: userTz }
     );
+
+    const ts = Math.floor(dt.toSeconds());
 
     return interaction.reply({ embeds: [buildTimestampEmbed(ts, userId)] });
   }
@@ -94,13 +87,13 @@ client.on("interactionCreate", async (interaction) => {
     const tz = interaction.options.getString("timezone");
 
     try {
-      Intl.DateTimeFormat("en-GB", { timeZone: tz });
+      Intl.DateTimeFormat(undefined, { timeZone: tz });
       timezones[userId] = tz;
       saveTimezones();
       return interaction.reply(`Timezone set to **${tz}** and saved 📝`);
     } catch {
       return interaction.reply(
-        "❌ Invalid timezone. Use an IANA timezone like `Europe/Zurich`."
+        "❌ Invalid timezone. Use IANA timezone like `Europe/Zurich`."
       );
     }
   }
@@ -109,34 +102,26 @@ client.on("interactionCreate", async (interaction) => {
 function buildTimestampEmbed(ts, userId) {
   const tz = timezones[userId] || "UTC";
 
-  const localDate = new Intl.DateTimeFormat("en-GB", {
-    dateStyle: "full",
-    timeStyle: "long",
-    timeZone: tz,
-  }).format(new Date(ts * 1000));
+  const localDate = DateTime.fromSeconds(ts).setZone(tz).toLocaleString(DateTime.DATETIME_FULL);
 
   return new EmbedBuilder()
     .setColor("#f200ff")
     .setTitle("Unix Time Converter")
     .setDescription(`Timezone selected: \`${tz}\`\nLocal time: **${localDate}**`)
     .addFields(
-      { name: "Short Time", value: `${render(ts, "t")} • \`<t:${ts}:t>\``, inline: false },
-      { name: "Long Time", value: `${render(ts, "T")} • \`<t:${ts}:T>\``, inline: false },
-      { name: "Short Date", value: `${render(ts, "d")} • \`<t:${ts}:d>\``, inline: false },
-      { name: "Long Date", value: `${render(ts, "D")} • \`<t:${ts}:D>\``, inline: false },
-      { name: "Short Date & Time", value: `${render(ts, "f")} • \`<t:${ts}:f>\``, inline: false },
-      { name: "Full Date & Time", value: `${render(ts, "F")} • \`<t:${ts}:F>\``, inline: false },
-      { name: "Relative Time", value: `${render(ts, "R")} • \`<t:${ts}:R>\``, inline: false }
+      { name: "Short Time", value: `<t:${ts}:t>`, inline: false },
+      { name: "Long Time", value: `<t:${ts}:T>`, inline: false },
+      { name: "Short Date", value: `<t:${ts}:d>`, inline: false },
+      { name: "Long Date", value: `<t:${ts}:D>`, inline: false },
+      { name: "Short Date & Time", value: `<t:${ts}:f>`, inline: false },
+      { name: "Full Date & Time", value: `<t:${ts}:F>`, inline: false },
+      { name: "Relative Time", value: `<t:${ts}:R>`, inline: false }
     )
     .setFooter({
       text: `Made by @m4rv1n_33`,
       iconURL:
         "https://cdn.discordapp.com/attachments/1447708077498437846/1448039340407132271/image.jpg",
     });
-}
-
-function render(ts, style) {
-  return `<t:${ts}:${style}>`;
 }
 
 client.login(process.env.DISCORD_TOKEN);
