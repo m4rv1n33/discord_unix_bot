@@ -6,7 +6,10 @@ const moment = require('moment-timezone');
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 // timezone save file
-const tzFile = path.join(__dirname, "data", "timezones.json");
+// Use Railway's persistent volume
+const tzFile = process.env.RAILWAY_VOLUME_MOUNT_PATH 
+  ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, "timezones.json")
+  : path.join(__dirname, "data", "timezones.json");
 
 // Create data directory if it doesn't exist
 const dataDir = path.dirname(tzFile);
