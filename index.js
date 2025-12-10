@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+const moment = require('moment-timezone');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -18,7 +19,7 @@ function saveTimezones() {
   fs.writeFileSync(tzFile, JSON.stringify(timezones, null, 4));
 }
 
-client.once("clientReady", () => {
+client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
@@ -38,6 +39,7 @@ client.on("interactionCreate", async (interaction) => {
     const dateInput = interaction.options.getString("date");
     const userTz = timezones[userId] || "UTC";
 
+    // Validate time format (HH:mm)
     const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
     if (!timePattern.test(timeInput)) {
       return interaction.reply(
@@ -45,9 +47,10 @@ client.on("interactionCreate", async (interaction) => {
       );
     }
 
-    let day, month, year;
-
+    let dateStr;
+    
     if (dateInput) {
+      // Validate date format (dd-mm-yyyy)
       const datePattern = /^(\d{2})-(\d{2})-(\d{4})$/;
       const dateMatch = dateInput.match(datePattern);
       if (!dateMatch) {
@@ -55,45 +58,47 @@ client.on("interactionCreate", async (interaction) => {
           "❌ Invalid date format! Use `dd-mm-yyyy` (example: 25-12-2025)."
         );
       }
-      [, day, month, year] = dateMatch;
+      // Format as YYYY-MM-DD for moment parsing
+      dateStr = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]} ${timeInput}`;
     } else {
-      const now = new Date();
-      const parts = new Intl.DateTimeFormat("en-GB", {
-        timeZone: userTz,
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      }).format(now).split("/");
-      [day, month, year] = parts;
+      // Use current date in user's timezone
+      const now = moment().tz(userTz);
+      dateStr = `${now.format('YYYY-MM-DD')} ${timeInput}`;
     }
 
-    const [hh, mm] = timeInput.split(":").map(Number);
+    try {
+      // Parse the date in the user's timezone
+      const m = moment.tz(dateStr, 'YYYY-MM-DD HH:mm', userTz);
+      
+      if (!m.isValid()) {
+        return interaction.reply("❌ Invalid date/time combination.");
+      }
+      
+      // Convert to Unix timestamp
+      const ts = m.unix();
 
-    // Create Date object in UTC based on local IANA time
-    const localDate = new Date(
-      Date.UTC(Number(year), Number(month) - 1, Number(day), hh, mm)
-    );
-
-    // Calculate timestamp in the user timezone
-    const tzOffsetMs = localDate.getTime() - Number(
-      new Date(
-        localDate.toLocaleString("en-US", { timeZone: "UTC" })
-      )
-    );
-    const ts = Math.floor((localDate.getTime() - tzOffsetMs) / 1000);
-
-    return interaction.reply({ embeds: [buildTimestampEmbed(ts, userId)] });
+      return interaction.reply({ embeds: [buildTimestampEmbed(ts, userId)] });
+    } catch (error) {
+      console.error("Error parsing date:", error);
+      return interaction.reply("❌ An error occurred while processing the time.");
+    }
   }
 
   if (command === "set-timezone") {
     const tz = interaction.options.getString("timezone");
 
     try {
-      Intl.DateTimeFormat(undefined, { timeZone: tz });
+      // Validate timezone using moment-timezone
+      if (!moment.tz.zone(tz)) {
+        return interaction.reply(
+          "❌ Invalid timezone. Use IANA timezone like `Europe/Zurich`."
+        );
+      }
+      
       timezones[userId] = tz;
       saveTimezones();
-      return interaction.reply(`Timezone set to **${tz}** and saved 📝`);
-    } catch {
+      return interaction.reply(`✅ Timezone set to **${tz}** and saved 📝`);
+    } catch (error) {
       return interaction.reply(
         "❌ Invalid timezone. Use IANA timezone like `Europe/Zurich`."
       );
@@ -104,25 +109,22 @@ client.on("interactionCreate", async (interaction) => {
 function buildTimestampEmbed(ts, userId) {
   const tz = timezones[userId] || "UTC";
 
-  const localDate = new Date(ts * 1000);
-  const formatted = new Intl.DateTimeFormat("en-GB", {
-    dateStyle: "full",
-    timeStyle: "long",
-    timeZone: tz,
-  }).format(localDate);
+  // Format the timestamp using moment-timezone for consistency
+  const m = moment.unix(ts).tz(tz);
+  const formatted = m.format('dddd, MMMM D, YYYY [at] h:mm:ss A [(]z[)]');
 
   return new EmbedBuilder()
     .setColor("#f200ff")
     .setTitle("Unix Time Converter")
     .setDescription(`Timezone selected: \`${tz}\`\nLocal time: **${formatted}**`)
     .addFields(
-      { name: "Short Time", value: `<t:${ts}:t>`, inline: false },
-      { name: "Long Time", value: `<t:${ts}:T>`, inline: false },
-      { name: "Short Date", value: `<t:${ts}:d>`, inline: false },
-      { name: "Long Date", value: `<t:${ts}:D>`, inline: false },
-      { name: "Short Date & Time", value: `<t:${ts}:f>`, inline: false },
-      { name: "Full Date & Time", value: `<t:${ts}:F>`, inline: false },
-      { name: "Relative Time", value: `<t:${ts}:R>`, inline: false }
+      { name: "Short Time", value: `<t:${ts}:t>`, inline: true },
+      { name: "Long Time", value: `<t:${ts}:T>`, inline: true },
+      { name: "Short Date", value: `<t:${ts}:d>`, inline: true },
+      { name: "Long Date", value: `<t:${ts}:D>`, inline: true },
+      { name: "Short Date & Time", value: `<t:${ts}:f>`, inline: true },
+      { name: "Full Date & Time", value: `<t:${ts}:F>`, inline: true },
+      { name: "Relative Time", value: `<t:${ts}:R>`, inline: true }
     )
     .setFooter({
       text: `Made by @m4rv1n_33`,
