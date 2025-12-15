@@ -161,3 +161,8 @@ to the configured Discord webhook.
 ```
 /set-timezone timezone:Europe/Zurich
 ```
+
+---
+## 📜 License
+
+MIT © 2025 m4rv1n33
